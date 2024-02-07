@@ -118,6 +118,7 @@ class Payment(models.Model):
         choices=INTENDED_PAYMENT_YEAR_CHOICES,
         help_text="Select the intended payment year",
     )
+    payment_details=models.TextField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.rental_unit.unit_identity} - {self.date_paid}"
