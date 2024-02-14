@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Upload Screenshot</title>
+<style>
+    body {
+        max-width: 500px;
+        margin: 0 auto;
+        padding: 20px;
+        font-family: system-ui, sans-serif;
+    }
+    label, select, input[type="file"] {
+        display: block;
+        width: 100%;
+        padding: 6px 10px;
+        margin-bottom: 10px;
+        box-sizing: border-box;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-size: 16px;
+    }
+    button[type="submit"] {
+        display: block;
+        width: 100%;
+        padding: 10px;
+        border: none;
+        border-radius: 4px;
+        background-color: #0074d9;
+        color: white;
+        cursor: pointer;
+        font-size: 16px;
+    }
+    @media (min-width: 500px) {
+        body {
+            padding: 40px;
+            font-size: 18px;
+        }
+    }
+    #image-preview {
+        display: none;
+        max-width: 100%;
+        margin-top: 10px;
+    }
+</style>
+</head>
+<body>
+<form method="post" enctype="multipart/form-data" id="upload-form">
+    {% csrf_token %}
+    <label>Rental Unit:</label>
+    <select name="rental_unit">
+        {% for unit in rental_units %}
+        <option value="{{ unit.id }}">{{ unit }}</option>
+        {% endfor %}
+    </select>
+    <label>Mpesa Screenshot or Receipt photo:</label>
+    <input type="file" name="screenshot" id="file-input" accept="image/*">
+    <img id="image-preview" src="#" alt="Image Preview">
+    <button type="submit">Upload</button>
+</form>
+
+<script>
+    document.getElementById("file-input").addEventListener("change", function() {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById("image-preview").src = e.target.result;
+            document.getElementById("image-preview").style.display = "block";
+        }
+        reader.readAsDataURL(this.files[0]);
+    });
+</script>
+</body>
+</html>

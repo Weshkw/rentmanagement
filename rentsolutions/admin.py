@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import CustomUser, Property, Ownership, RentalUnit, Payment
+from .models import CustomUser, Property, Ownership, RentalUnit, Payment, PaymentScreeshot
 
 @admin.register(CustomUser)
 class CustomUserAdmin(admin.ModelAdmin):
@@ -23,7 +23,11 @@ class RentalUnitAdmin(admin.ModelAdmin):
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ('rental_unit', 'amount_paid', 'date_paid', 'receipt_generated', 'intended_payment_month', 'intended_payment_year')
+    list_display = ('rental_unit', 'amount_paid','payment_details','date_paid','intended_payment_month', 'intended_payment_year')
     search_fields = ('rental_unit__unit_identity', 'date_paid')
 
+@admin.register(PaymentScreeshot)
+class PaymentScreeshotAdmin(admin.ModelAdmin):
+    list_display = ('rentalUnit', 'screenshot')
+    
 # Register other models if needed

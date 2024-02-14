@@ -123,4 +123,7 @@ class Payment(models.Model):
     def __str__(self):
         return f"{self.rental_unit.unit_identity} - {self.date_paid}"
 
+class PaymentScreeshot(models.Model):
+    rentalUnit=models.ForeignKey(RentalUnit, on_delete=models.PROTECT)
+    screenshot=models.ImageField(upload_to='screenshot_images/')
 

@@ -1,10 +1,29 @@
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login
 from django.views.decorators.csrf import csrf_protect
-from django.http import HttpResponse
+from .models import RentalUnit, PaymentScreeshot
+from django.contrib import messages
+
 
 def home(request):
     return render(request, 'rentsolutions/home.html')
+
+def upload_payment_screenshot(request):
+    if request.method == 'POST':
+            rental_unit_id = request.POST['rental_unit']
+            screenshot = request.FILES['screenshot']
+            
+            rental_unit = RentalUnit.objects.get(id=rental_unit_id)
+            
+            payment_screenshot = PaymentScreeshot(rentalUnit=rental_unit, screenshot=screenshot)
+            payment_screenshot.save()
+            messages.success(request, 'Payment screenshot uploaded successfully.')
+            return redirect('home')
+   
+    
+    rental_units = RentalUnit.objects.all()
+    context = {'rental_units': rental_units}
+    return render(request, 'rentsolutions/upload_screenshot.html',context)
 
 @csrf_protect
 def login_view(request):
