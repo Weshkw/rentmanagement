@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager, Group, Permission
 from django.utils import timezone
+from django.db.models import Sum
 
 
 class CustomUserManager(BaseUserManager):
@@ -81,6 +82,21 @@ class RentalUnit(models.Model):
 
     def __str__(self):
         return self.unit_identity
+    
+    def get_rent_balances_by_month(self):
+        """
+        Calculate rent balances for each month for this rental unit.
+        Returns a dictionary where keys are month-year strings (e.g., '01-2024') and values are balances.
+        """
+        balances_by_month = {}
+        payments_by_month = self.payments.values('intended_payment_month', 'intended_payment_year') \
+                            .annotate(total_paid=Sum('amount_paid'))
+
+        for payment in payments_by_month:
+            month_year = f"{payment['intended_payment_month']}-{payment['intended_payment_year']}"
+            balances_by_month[month_year] = self.monthly_rent - payment['total_paid']
+
+        return balances_by_month
 
 class Payment(models.Model):
     rental_unit = models.ForeignKey(RentalUnit, on_delete=models.PROTECT, related_name='payments')
