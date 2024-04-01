@@ -3,17 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>landlord</title>
+    <title>Landlord Main Page</title>
 </head>
 <body>
     <div>
-        <a href="">
-            <h4>Property Name</h4>
-            <p>Location</p>
-            <p>Number of rental units</p>
-            <p>number of rented units</p>
-            <P>Total payments for example month</P>
-        </a>
+        {% include "navbar.html" %}
     </div>
+    
+    <form method="get">
+        <label for="month">Month:</label>
+        <input type="number" id="month" name="month" min="1" max="12" value="{{ selected_month }}" required>
+        <label for="year">Year:</label>
+        <input type="number" id="year" name="year" min="2020" max="2050" value="{{ selected_year }}" required>
+        <button type="submit">View Totals</button>
+    </form>
+    
+    <div class="card-container">
+        {% for data in property_data %}
+        <div class="property-card">
+            <h3>{{ data.property.name }}</h3>
+            <p>Occupied Units: {{ data.occupied_units }} / {{ data.total_units }}</p>
+            <p>Intended Payments: {{ data.intended_payments }}</p>
+            <p>Actual Payments: {{ data.actual_payments }}</p>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <style>
+        .card-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+        }
+    
+        .property-card {
+            width: 300px;
+            padding: 20px;
+            margin-bottom: 20px;
+            background-color: #f2f2f2;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+
 </body>
 </html>

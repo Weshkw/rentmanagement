@@ -1,7 +1,14 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser, BaseUserManager, Group, Permission
-from django.utils import timezone
 from django.db.models import Sum
+from django.core.exceptions import ValidationError
+from decimal import Decimal
+from datetime import timedelta
+import calendar
+from dateutil.relativedelta import relativedelta
+from datetime import datetime
+from django.db.models import Sum, Q
+from django.utils import timezone
 
 
 class CustomUserManager(BaseUserManager):
@@ -19,13 +26,13 @@ class CustomUserManager(BaseUserManager):
 
         return self.create_user(phone_number, password, **extra_fields)
 
+
 class CustomUser(AbstractUser):
     phone_number = models.CharField(max_length=15, unique=True)
     full_name = models.CharField(max_length=255)
     address = models.TextField(blank=True, null=True)
-    date_created = models.DateTimeField(default=timezone.now, editable=False)
+    date_registered = models.DateField(auto_now_add=True)
     date_updated = models.DateTimeField(auto_now=True)
-
     objects = CustomUserManager()
     groups = models.ManyToManyField(Group, related_name='custom_user_set', blank=True)
     user_permissions = models.ManyToManyField(
@@ -44,84 +51,180 @@ class CustomUser(AbstractUser):
     def __str__(self):
         return self.full_name
 
-class Property(models.Model):
+
+class Landlord(models.Model):
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='landlords')
+
+    def __str__(self):
+        return self.user.full_name
+    
+
+
+
+
+class RentalProperty(models.Model):
     name = models.CharField(max_length=255)
+    landlord = models.ForeignKey('Landlord', on_delete=models.CASCADE, related_name='properties')
     location = models.TextField()
     total_units = models.PositiveIntegerField(default=1)
     amenities = models.TextField(blank=True, null=True)
+    date_registered = models.DateField(auto_now_add=True)
+    date_updated = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.name
+    
 
-class Ownership(models.Model):
-    landlord = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
-    property = models.ForeignKey(Property, on_delete=models.CASCADE)
-    date_registered = models.DateField(auto_now_add=True)
+class RentalPropertyManager(models.Model):
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='rental_property_managers')
+    property_managed = models.ForeignKey(RentalProperty, on_delete=models.CASCADE, related_name='propertys_managed')
+    national_id_number= models.CharField(max_length=255)
+    management_start_date= models.DateField()
+    management_end_date=models.DateField(blank=True, null=True)
+
+    def __str__(self):
+        return f'{self.user.full_name} manages {self.property_managed.name}'
+
+
+class RentalUnit(models.Model):
+    property_with_rental_unit = models.ForeignKey(RentalProperty, on_delete=models.CASCADE)
+    unit_identity = models.CharField(max_length=255)
+    current_monthly_rent_rate = models.ForeignKey('RentalUnitMonthlyRentRate', on_delete=models.PROTECT,
+                                                  related_name='monthly_rent')
+    occupied = models.BooleanField(default=False)
 
     def save(self, *args, **kwargs):
-        # Check if the landlord already owns the property
-        existing_ownership = Ownership.objects.filter(landlord=self.landlord, property=self.property).exists()
-        if existing_ownership:
-            raise ValueError('This landlord already owns the property.')
+        created = self.pk is None
+        super().save(*args, **kwargs)  # Save the RentalUnit first
+        self.update_total_units()
+        if created and self.current_monthly_rent_rate:
+            self.current_monthly_rent_rate.rental_unit = self.unit_identity
+            self.current_monthly_rent_rate.unit_absolute_identity = self.id
+            self.current_monthly_rent_rate.save()
 
+    def delete(self, *args, **kwargs):
+        rental_property = self.property_with_rental_unit
+        super().delete(*args, **kwargs)
+        rental_property.update_total_units()
+
+    def update_total_units(self):
+        rental_property = self.property_with_rental_unit
+        rental_property.total_units = rental_property.rentalunit_set.count()
+        rental_property.save()
+
+    def __str__(self):
+        return f'{self.unit_identity} in {self.property_with_rental_unit.name}'
+    
+
+
+
+
+
+class Tenant(models.Model):
+    rental_unit_occupied = models.ForeignKey(RentalUnit, on_delete=models.CASCADE, related_name='rental_units',
+                                              verbose_name="Rental unit assigned")
+    date_tenancy_starts = models.DateField()
+    date_tenancy_ends = models.DateField(blank=True, null=True)
+    tenant_name = models.CharField(max_length=255)
+    national_id_number = models.CharField(max_length=255, blank=True, null=True)
+    phone = models.CharField(max_length=15, blank=True, null=True)
+    emergency_contact_name = models.CharField(max_length=15, blank=True, null=True)
+    emergency_contact_phone = models.CharField(max_length=15, blank=True, null=True)
+    emergency_contact_relationship = models.CharField(max_length=15, blank=True, null=True)
+
+    @property
+    def Tenant_Monthly_Rental_balances(self):
+        balances = {}
+        today = timezone.now().date()
+
+        # Get the applicable rent rates for the tenant's rental unit
+        applicable_rent_rates = RentalUnitMonthlyRentRate.objects.filter(
+            unit_absolute_identity=self.rental_unit_occupied.id
+        ).order_by('start_date')
+
+        # Iterate over the applicable rent rates
+        for rent_rate in applicable_rent_rates:
+            start_date = rent_rate.start_date
+            end_date = rent_rate.end_date if rent_rate.end_date else today
+
+            # Iterate over the months between start_date and end_date
+            current_date = start_date
+            while current_date <= end_date:
+                month = current_date.month
+                year = current_date.year
+
+                # Calculate the intended payments for this month
+                total_payments = RentPayment.objects.filter(
+                    tenant_paying=self,
+                    intended_payment_month=str(month).zfill(2),
+                    intended_payment_year=str(year)
+                ).aggregate(total_amount=Sum('amount_paid'))['total_amount'] or 0
+
+                # Calculate the rent balance for this month
+                rent_balance = rent_rate.rent_rate - total_payments
+                balances[f"{year}-{str(month).zfill(2)}"] = max(Decimal(0), rent_balance)
+
+                # Move to the next month
+                current_date += relativedelta(months=1)
+
+        return balances
+
+    def save(self, *args, **kwargs):
+        if self.pk is None:  # Only when the instance is newly created
+            self.rental_unit_occupied.occupied = True
+            self.rental_unit_occupied.save(update_fields=['occupied'])
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return self.landlord.full_name
+        if self.tenant_name:
+            return f'{self.tenant_name}, rental_unit:{self.rental_unit_occupied.unit_identity}'
+        else:
+            return f'Tenant {self.pk}, rental_unit:{self.rental_unit_occupied.unit_identity}'
 
-class RentalUnit(models.Model):
-    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name='rental_units')
-    unit_identity = models.CharField(max_length=255)
-    monthly_rent = models.DecimalField(max_digits=10, decimal_places=2)
-    is_occupied = models.BooleanField(default=False)
-    date_occupied = models.DateField(blank=True, null=True)
-    date_previous_tenant_left = models.DateField(blank=True, null=True)
-    occupant_name = models.CharField(max_length=255, blank=True, null=True)
-    occupant_id = models.CharField(max_length=255, blank=True, null=True)
-    occupant_phone= models.CharField(max_length=15,blank=True, null=True)
+
+class RentalUnitMonthlyRentRate(models.Model):
+    rent_rate = models.DecimalField(max_digits=10, decimal_places=2)
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    rental_unit = models.CharField(max_length=255, blank=True)
+    unit_absolute_identity = models.IntegerField(null=True, blank=True)
 
     def __str__(self):
-        return self.unit_identity
-    
-    def get_rent_balances_by_month(self):
-        """
-        Calculate rent balances for each month for this rental unit.
-        Returns a dictionary where keys are month-year strings (e.g., '01-2024') and values are balances.
-        """
-        balances_by_month = {}
-        payments_by_month = self.payments.values('intended_payment_month', 'intended_payment_year') \
-                            .annotate(total_paid=Sum('amount_paid'))
+        return f"Rent rate: {self.rent_rate} - Start Date: {self.start_date}"
 
-        for payment in payments_by_month:
-            month_year = f"{payment['intended_payment_month']}-{payment['intended_payment_year']}"
-            balances_by_month[month_year] = self.monthly_rent - payment['total_paid']
+    def save(self, *args, **kwargs):
+        if self.start_date:
+            if self.start_date.day != 1:
+                _, last_day_of_month = calendar.monthrange(self.start_date.year, self.start_date.month)
+                next_month = self.start_date.replace(day=1) + timedelta(days=last_day_of_month)
+                self.start_date = next_month.replace(day=1)
 
-        return balances_by_month
+        previous_rate = RentalUnitMonthlyRentRate.objects.filter(
+            rental_unit=self.rental_unit,
+            unit_absolute_identity=self.unit_absolute_identity
+        ).order_by('-start_date').first()
 
-class Payment(models.Model):
-    rental_unit = models.ForeignKey(RentalUnit, on_delete=models.PROTECT, related_name='payments')
+        if previous_rate and self.start_date < previous_rate.start_date:
+            raise ValidationError("Start date cannot be earlier than the start date of the previous rate.")
+
+        if previous_rate:
+            previous_rate_end_date = self.start_date - timedelta(days=1)
+            RentalUnitMonthlyRentRate.objects.filter(pk=previous_rate.pk).update(end_date=previous_rate_end_date)
+
+        super().save(*args, **kwargs)
+
+
+class RentPayment(models.Model):
+    tenant_paying = models.ForeignKey(Tenant, on_delete=models.SET_NULL, null=True, related_name='tenant_payments')
+    rental_unit_paid_for = models.CharField(max_length=255, blank=True)
     amount_paid = models.DecimalField(max_digits=10, decimal_places=2)
     date_paid = models.DateField()
-    receipt_generated = models.BooleanField(default=False)
-
     INTENDED_PAYMENT_MONTH_CHOICES = [
-        ('01', 'January'),
-        ('02', 'February'),
-        ('03', 'March'),
-        ('04', 'April'),
-        ('05', 'May'),
-        ('06', 'June'),
-        ('07', 'July'),
-        ('08', 'August'),
-        ('09', 'September'),
-        ('10', 'October'),
-        ('11', 'November'),
-        ('12', 'December'),
+        ('01', 'January'), ('02', 'February'), ('03', 'March'), ('04', 'April'),
+        ('05', 'May'), ('06', 'June'), ('07', 'July'), ('08', 'August'),
+        ('09', 'September'), ('10', 'October'), ('11', 'November'), ('12', 'December'),
     ]
-
-    INTENDED_PAYMENT_YEAR_CHOICES = [
-    (f'{year}',f'{year}') for year in range(2020, 2030)  
-]
+    INTENDED_PAYMENT_YEAR_CHOICES = [(str(year), str(year)) for year in range(2020, 2050)]
 
     intended_payment_month = models.CharField(
         max_length=2,
@@ -134,12 +237,48 @@ class Payment(models.Model):
         choices=INTENDED_PAYMENT_YEAR_CHOICES,
         help_text="Select the intended payment year",
     )
-    payment_details=models.TextField(blank=True, null=True)
+    payment_details = models.TextField(blank=True, null=True)
+    date_recorded = models.DateField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        if self.tenant_paying:
+            self.rental_unit_paid_for = self.tenant_paying.rental_unit_occupied.unit_identity
+        super().save(*args, **kwargs)
+        self.handle_surplus_payment()
+
+    def handle_surplus_payment(self):
+        tenant = self.tenant_paying
+        payment_date = self.date_paid
+        payment_month = int(self.intended_payment_month)
+        payment_year = int(self.intended_payment_year)
+
+        # Get the applicable rent rate for the tenant's rental unit and payment month
+        rent_rate = RentalUnitMonthlyRentRate.objects.filter(
+            unit_absolute_identity=tenant.rental_unit_occupied.id,
+            start_date__lte=datetime(payment_year, payment_month, 1)
+        ).order_by('-start_date').first()
+
+        if rent_rate:
+            agreed_rent = rent_rate.rent_rate
+            surplus = self.amount_paid - agreed_rent
+
+            if surplus > 0:
+                # Adjust the current payment to the agreed rent amount
+                self.amount_paid = agreed_rent
+                self.payment_details = f"Adjusted payment to agreed rent: {agreed_rent}. Surplus: {surplus}"
+                self.save(update_fields=['amount_paid', 'payment_details'])
+
+                # Create a new payment entry for the next month's prepayment
+                next_month = datetime(payment_year, payment_month, 1) + relativedelta(months=1)
+                new_payment = RentPayment.objects.create(
+                    tenant_paying=tenant,
+                    amount_paid=surplus,
+                    date_paid=payment_date,
+                    intended_payment_month=str(next_month.month).zfill(2),
+                    intended_payment_year=str(next_month.year),
+                    payment_details=f"Prepayment for {next_month.strftime('%B %Y')} (from surplus payment)"
+                )
 
     def __str__(self):
-        return f"{self.rental_unit.unit_identity} - {self.date_paid}"
-
-class PaymentScreeshot(models.Model):
-    rentalUnit=models.ForeignKey(RentalUnit, on_delete=models.PROTECT)
-    screenshot=models.ImageField(upload_to='screenshot_images/')
+        return f"Payment - {self.date_paid} unit- {self.rental_unit_paid_for}"
 

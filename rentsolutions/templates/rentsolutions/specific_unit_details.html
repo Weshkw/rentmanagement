@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rental Unit Details</title>
+  <style>
+    /* Base styles for mobile */
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #fff;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 20px auto;
+      padding: 20px;
+      border-radius: 10px; /* Adjust for smoother look */
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    h1, h2, h3, h4, p {
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      font-size: 24px;
+      text-align: center;
+    }
+
+    h2 {
+      font-size: 20px;
+      text-align: center;
+      color: #007bff; /* Primary blue for emphasis */
+    }
+
+    h3, h4 {
+      font-size: 18px;
+      color: #495057; /* Subdued gray for clarity */
+    }
+
+    p {
+      font-size: 16px;
+      line-height: 1.5; /* Improve spacing for better readability */
+    }
+
+    /* Table styles */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    th, td {
+      padding: 12px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #e9ecef; /* Lighter background for table header */
+      color: #333;
+      font-weight: bold; /* Bold text for better emphasis */
+    }
+
+    td {
+      color: #495057; /* Subdued gray for table body */
+    }
+
+    .highlight { /* Class for highlighting specific cells */
+      background-color: #f5f5f5;
+      color: #333;
+    }
+
+    /* Media query for larger screens */
+    @media only screen and (min-width: 768px) {
+      h1 {
+        font-size: 28px;
+      }
+
+      h2 {
+        font-size: 24px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    {% include "navbar.html" %}
+    <h1>Rental Unit Details</h1>
+    <a href="{{ request.META.HTTP_REFERER }}">Go back</a>
+
+    <h2>{{ rental_unit.unit_identity }}</h2>
+    <h3 class="tenant-info">Tenant Name: {{ rental_unit.occupant_name }}</h3>
+    <h4 class="tenant-info">Tenant Phone: {{ rental_unit.occupant_phone }}</h4>
+    <p>Expected Monthly Rent: {{ rental_unit.monthly_rent }}</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Year</th>
+          <th>Month</th>
+          <th>Total Amount Paid</th>
+          <th>Rent Balance</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for payment_month in total_rent_paid_per_month %}
+          <tr>
+            <td>{{ payment_month.intended_payment_year }}</td>
+            <td>{{ payment_month.intended_payment_month }}</td>
+            <td>{{ payment_month.total_amount }}</td>
+            {% for rent_balance_month in rent_balances_per_month %}
+              {% if rent_balance_month.year == payment_month.intended_payment_year and rent_balance_month.month == payment_month.intended_payment_month %}
+                <td class="highlight">{{ rent_balance_month.rent_balance }}</td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    
+    <!-- Display Total Rent Balance -->
+    <h4>Total Rent Arrears: {{ total_rent_balances }}</h4>
+  </div>
+</body>
+</html>

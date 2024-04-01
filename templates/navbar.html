@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#262626" />
+    <title>Responsive Navbar</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        font-family: 'Montserrat', sans-serif;
+        margin: 0;
+        padding: 0;
+      }
+
+      nav {
+        background-color: #262626;
+        color: #fff;
+        padding: 10px;
+        border-radius: 5px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .navbar {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        width: 100%;
+      }
+
+      .home-btn {
+        color: #ffc107;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 1.2rem;
+        margin-right: 10px;
+        transition: color 0.3s ease;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        white-space: nowrap; /* Prevent line breaks */
+      }
+
+      .home-btn:hover {
+        color: #ffffff;
+        background-color: #ffa000;
+        border-radius: 10px;
+      }
+
+      .search-form {
+        display: flex;
+        align-items: center;
+        margin-right: 10px;
+        flex-grow: 1;
+        max-width: 100%; /* Allow the search form to grow to the full width */
+      }
+
+      .search-form input {
+        padding: 6px;
+        border: 1px solid #ccc;
+        border-radius: 20px 0 0 20px;
+        background-color: #f2f2f2;
+        color: #333;
+        font-family: inherit;
+        transition: background-color 0.3s ease;
+        flex-grow: 1;
+      }
+
+      .search-form input:focus {
+        background-color: #e6e6e6;
+        outline: none;
+      }
+
+      .search-form button {
+        background-color: #ffc107;
+        color: #ffffff;
+        border: none;
+        border-radius: 0 20px 20px 0;
+        padding: 6px 10px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+      }
+
+      .search-form button:hover {
+        background-color: #ffa000;
+      }
+
+      .toggle-btn {
+        background-color: transparent;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        height: 16px;
+        transition: transform 0.3s ease-in-out;
+        margin-left: 5px; /* Adjust the margin as needed */
+      }
+
+      .toggle-btn:hover {
+        transform: scale(1.1);
+      }
+
+      .bar {
+        width: 20px;
+        height: 2px;
+        background-color: #fff;
+        transition: transform 0.3s ease-in-out;
+      }
+
+      .open .bar:nth-child(1) {
+        transform: translateY(6px) rotate(45deg);
+      }
+
+      .open .bar:nth-child(2) {
+        opacity: 0;
+      }
+
+      .open .bar:nth-child(3) {
+        transform: translateY(-6px) rotate(-45deg);
+      }
+
+      .additional-content {
+        display: none;
+        width: 100%;
+        padding-top: 10px;
+      }
+
+      .additional-content ul {
+        list-style-type: none;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .additional-content li {
+        margin-bottom: 5px;
+      }
+
+      .additional-content a {
+        color: #fff;
+        text-decoration: none;
+        padding: 8px 12px;
+        border-radius: 20px;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        font-weight: 700;
+        background-color: #262626;
+        transition: background-color 0.3s ease;
+      }
+
+      .additional-content a:hover {
+        background-color: #000000;
+        color: #ffc107;
+      }
+
+      @media (max-width: 768px) {
+        .toggle-btn {
+          display: flex;
+        }
+
+        .additional-content li {
+          margin-bottom: 20px;
+        }
+      }
+
+      @media (min-width: 769px) {
+        .toggle-btn {
+          display: none;
+        }
+
+        .additional-content {
+          display: block;
+          width: auto;
+        }
+
+        .additional-content ul {
+          flex-direction: row;
+        }
+
+        .additional-content li {
+          margin-right: 20px;
+          margin-bottom: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <div class="navbar">
+        <a href="#" class="home-btn">Home</a>
+        <form class="search-form">
+          <input type="text" placeholder="Search..." name="q" />
+          <button type="submit">Go</button>
+        </form>
+        <button class="toggle-btn">
+          <span class="bar"></span>
+          <span class="bar"></span>
+          <span class="bar"></span>
+        </button>
+        <div class="additional-content">
+          <ul>
+          {% if user.is_authenticated %}
+            <li><a href="{% url 'logout' %}">Logout</a></li>
+          {% else %}
+            <li><a href="{% url 'login' %}">Login</a></li>
+          {% endif %}
+          {% if user.is_authenticated %}
+            {% if user.is_superuser or user.is_staff %}
+              <li><a href="{% url 'rent_easier' %}">Admin</a></li>
+            {% elif is_landlord %}
+              <li><a href="{% url 'land_lord_main_page' %}">Landlord</a></li>
+            {% elif is_rental_property_manager %}
+              <li><a href="{% url 'property_manager_page' %}">Property management</a></li>
+            {% endif %}
+          {% endif %}
+
+          </ul>
+        </div>
+      </div>
+    </nav>
+    <script>
+      const toggleBtn = document.querySelector('.toggle-btn');
+      const additionalContent = document.querySelector('.additional-content');
+      const bars = document.querySelectorAll('.bar');
+
+      toggleBtn.addEventListener('click', () => {
+        additionalContent.style.display =
+          additionalContent.style.display === 'block' ? 'none' : 'block';
+        toggleBtn.classList.toggle('open');
+      });
+    </script>
+  </body>
+</html>
