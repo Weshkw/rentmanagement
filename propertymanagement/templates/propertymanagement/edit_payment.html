@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Payment</title>
+</head>
+<body>
+    {% include "navbar.html" %}
+    <h1>Edit Payment</h1>
+    <form method="post">
+        {% csrf_token %}
+        <div>
+            <label for="amount_paid">Amount Paid</label>
+            <input type="number" id="amount_paid" name="amount_paid" value="{{ payment.amount_paid }}" step="0.01" required>
+        </div>
+        <div>
+            <label for="intended_payment_month">Intended Payment Month</label>
+            <select id="intended_payment_month" name="intended_payment_month">
+                {% for month_value, month_name in payment.INTENDED_PAYMENT_MONTH_CHOICES %}
+                    <option value="{{ month_value }}" {% if payment.intended_payment_month == month_value %}selected{% endif %}>{{ month_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="intended_payment_year">Intended Payment Year</label>
+            <input type="number" id="intended_payment_year" name="intended_payment_year" value="{{ payment.intended_payment_year }}" required>
+        </div>
+        <div>
+            <label for="payment_details">Payment Details</label>
+            <textarea id="payment_details" name="payment_details">{{ payment.payment_details }}</textarea>
+        </div>
+        <button type="submit">Save Changes</button>
+    </form>
+</body>
+</html>

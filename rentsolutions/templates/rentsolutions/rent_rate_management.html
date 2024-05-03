@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        /* Styling for the warning message */
+        .warning-message {
+            background-color: #ffd9d9;
+            color: #ff0000;
+            padding: 10px;
+            border: 1px solid #ff0000;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+
+        /* Styling for the existing rent rates table */
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+    </style>
+</head>
+<body>
+    <div>{% include "navbar.html" %}</div>
+    {% if rent_rate %}
+        <h2>Update Rent Rate for {{ rental_unit.unit_identity }}</h2>
+        <div class="warning-message">Updating rent rates should be done with caution and following legal procedures to prevent conflicts with tenants.</div>
+    {% else %}
+        <h2>Create New Rent Rate for {{ rental_unit.unit_identity }}</h2>
+        <div class="warning-message">Updating rent rates should be done with caution and following legal procedures to prevent conflicts with tenants.</div>
+    {% endif %}
+    <form method="post" id="rent-rate-form">
+        {% csrf_token %}
+        <label for="rent_rate">Rent Rate:</label>
+        <input type="number" id="rent_rate" name="rent_rate" step="0.01" value="{{ rent_rate.rent_rate|default:'' }}" required>
+        <label for="start_date">Start Date:</label>
+        <input type="date" id="start_date" name="start_date" value="{{ rent_rate.start_date|date:'Y-m-d'|default:'' }}" required>
+        {% if error_message %}
+            <p style="color: red;">{{ error_message }}</p>
+        {% endif %}
+        <button type="submit">Save</button>
+    </form>
+    <h3>Rent Rates History</h3>
+    {% if existing_rent_rates %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Rent Rate</th>
+                    <th>Start Date</th>
+                    <th>End Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for rate in existing_rent_rates %}
+                    <tr>
+                        <td>{{ rate.rent_rate }}</td>
+                        <td>{{ rate.start_date }}</td>
+                        <td>{{ rate.end_date|default:"-" }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No existing rent rates for this rental unit.</p>
+    {% endif %}
+
+    <script>
+        // Get the form element
+        const form = document.querySelector('#rent-rate-form');
+
+        // Add an event listener to the form's submit event
+        form.addEventListener('submit', (event) => {
+            // Get the value of the start_date input field
+            const startDateInput = document.querySelector('#start_date');
+            const startDate = new Date(startDateInput.value);
+
+            // Check if the day of the month is 1 (the first day)
+            if (startDate.getDate() !== 1) {
+                // If the day is not 1, prevent the form from submitting
+                event.preventDefault();
+
+                // Display an error message
+                alert('Please enter the first day of the month for the start date.');
+            }
+        });
+    </script>
+</body>
+</html>

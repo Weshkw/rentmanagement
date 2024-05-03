@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <!-- Include Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        .card-manager {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+
+    </style>
+</head>
+<body>
+    {% include "navbar.html" %}
+    <div class="container">
+        <h2>Manage Property Managers</h2>
+        <div class="row">
+            {% for property in properties %}
+            <div class="col-md-6 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title">{{ property.name }}</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">{{ property.address }}</p>
+                        <h3>Managers</h3>
+                        {% for manager in property.propertys_managed.all %}
+                        <div class="card-manager">
+                            <h5 class="mb-0">{{ manager.user.full_name }} ,Phone:{{ manager.user.phone_number }}.</h5>
+                            <button type="button" class="btn btn-danger btn-sm" data-toggle="modal" data-target="#fireManagerModal{{ manager.id }}">
+                                Fire
+                            </button>
+                        </div>
+                        {% empty %}
+                        <p>No managers assigned yet.</p>
+                        {% endfor %}
+                    </div>
+                    <div class="card-footer">
+                        <button type="button" class="btn btn-primary" data-toggle="modal" data-target="#employManagerModal{{ property.id }}">
+                            Employ Manager
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal for Employ Manager -->
+        <div class="modal fade" id="employManagerModal{{ property.id }}" tabindex="-1" role="dialog" aria-labelledby="employManagerModalLabel{{ property.id }}" aria-hidden="true">
+          <div class="modal-dialog" role="document">
+              <div class="modal-content">
+                  <div class="modal-header">
+                      <h5 class="modal-title" id="employManagerModalLabel{{ property.id }}">Employ Manager for {{ property.name }}</h5>
+                      <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                          <span aria-hidden="true">&times;</span>
+                      </button>
+                  </div>
+                  <div class="modal-body">
+                      <form method="post" action="{% url 'manage_property_managers' %}">
+                          {% csrf_token %}
+                          <!-- Add hidden input field to include property ID -->
+                          <input type="hidden" name="property_id" value="{{ property.id }}">
+                          <div class="form-group">
+                              <label for="full_name">Full Name</label>
+                              <input type="text" class="form-control" id="full_name" name="full_name" required>
+                          </div>
+                          <div class="form-group">
+                              <label for="phone_number">Phone Number</label>
+                              <input type="text" class="form-control" id="phone_number" name="phone_number" required>
+                          </div>
+                          <div class="form-group">
+                              <label for="national_id_number">National ID Number</label>
+                              <input type="text" class="form-control" id="national_id_number" name="national_id_number" required>
+                          </div>
+                          <div class="form-group">
+                              <label for="management_start_date">Management Start Date</label>
+                              <input type="date" class="form-control" id="management_start_date" name="management_start_date" required>
+                          </div>
+                          <button type="submit" class="btn btn-primary">Submit</button>
+                      </form>
+                  </div>
+              </div>
+          </div>
+      </div>
+
+            <!-- Modal for Fire Manager -->
+            {% for manager in property.propertys_managed.all %}
+            <div class="modal fade" id="fireManagerModal{{ manager.id }}" tabindex="-1" role="dialog" aria-labelledby="fireManagerModalLabel{{ manager.id }}" aria-hidden="true">
+                <div class="modal-dialog" role="document">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="fireManagerModalLabel{{ manager.id }}">Fire Manager {{ manager.user.full_name }}</h5>
+                            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </div>
+                        <div class="modal-body">
+                            <p>Are you sure you want to fire {{ manager.user.full_name }} as the manager for {{ property.name }}?</p>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                            <form method="post" action="{% url 'fire_property_manager' manager.id %}">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-danger">Fire Manager</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Include Bootstrap JS -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>

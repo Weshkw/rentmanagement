@@ -4,47 +4,95 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Landlord Main Page</title>
-</head>
-<body>
-    <div>
-        {% include "navbar.html" %}
-    </div>
-    
-    <form method="get">
-        <label for="month">Month:</label>
-        <input type="number" id="month" name="month" min="1" max="12" value="{{ selected_month }}" required>
-        <label for="year">Year:</label>
-        <input type="number" id="year" name="year" min="2020" max="2050" value="{{ selected_year }}" required>
-        <button type="submit">View Totals</button>
-    </form>
-    
-    <div class="card-container">
-        {% for data in property_data %}
-        <div class="property-card">
-            <h3>{{ data.property.name }}</h3>
-            <p>Occupied Units: {{ data.occupied_units }} / {{ data.total_units }}</p>
-            <p>Intended Payments: {{ data.intended_payments }}</p>
-            <p>Actual Payments: {{ data.actual_payments }}</p>
-        </div>
-        {% endfor %}
-    </div>
-    
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss/dist/tailwind.min.css" rel="stylesheet">
     <style>
-        .card-container {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
-        }
-    
-        .property-card {
-            width: 300px;
-            padding: 20px;
-            margin-bottom: 20px;
-            background-color: #f2f2f2;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        /* Accent Colors */
+        .accent-indigo { color: #38015f; }
+        .accent-coral { color: #ff4c0b; }
+        .accent-teal { color: #008080; }
+        .bg-accent-indigo { background-color: #4b0082; }
+        .bg-accent-coral { background-color: #ff7f50; }
+        .bg-accent-teal { background-color: #008080; }
+
+        /* Responsive Styles */
+        @media (max-width: 640px) {
+            .grid-cols-1,
+            .grid-cols-2,
+            .grid-cols-3 {
+                grid-template-columns: repeat(1, minmax(0, 1fr));
+            }
+
+            /* Adjust label wrapping */
+            .flex.items-center label {
+                display: block;
+                text-align: center;
+                margin-bottom: 0.5rem;
+            }
+
+            /* Move button below inputs */
+            .form-group {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .form-group button {
+                margin-top: 0.5rem;
+            }
         }
     </style>
-
+</head>
+<body class="bg-blue-100 text-gray-800">
+    <!-- Navbar included here -->
+    {% include "navbar.html" %}
+    <div class="max-w-4xl mx-auto py-8">
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-2xl font-bold mb-4 text-center">View Rental Payment Details</h2>
+            <form method="get" class="flex justify-center mb-6 w-full" style="max-height: 15vh; max-width: 10vw;">
+                
+              <div style="display: flex; margin-left: 780%; @media screen and (min-width: 769px) { margin-left: 80%; }">
+                        <label for="month" class="mr-2 font-medium text-gray-600">Month:</label>
+                        <input type="number" id="month" name="month" min="1" max="12" value="{{ selected_month }}" required class="px-3 py-2 border border-gray-400 rounded-md">
+                    
+                    
+                        <label for="year" class="mr-2 font-medium text-gray-600">Year:</label>
+                        <input type="number" id="year" name="year" min="2020" max="2050" value="{{ selected_year }}" required class="px-3 py-2 border border-gray-400 rounded-md mr-4">
+                    
+                        <button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700">View</button>
+                      </div>
+            </form>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-8">
+            <!-- Your property data loop -->
+            {% for data in property_data %}
+            <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                <div class="p-6">
+                    <h2 class="text-xl font-bold mb-2 accent-indigo">{{ data.property.name }}</h2>
+                    <h3 class="text-lg font-bold mb-2"><a href="{% url 'rental_units_in_property' data.property.pk %}" class="hover:text-blue-600 hover:underline">Total Rentable Units: {{ data.total_units }}</a></h3>
+                    <h4 class="text-base font-medium mb-2">Currently Occupied Units: {{ data.occupied_units }}</h4>
+                    <h5 class="text-base font-medium mb-4">Manager: {{ data.property.propertys_managed.all.0.user.full_name }}</h5>
+                </div>
+                <div class="bg-gray-100 p-6">
+                    <p class="accent-teal font-bold mb-2">Total payments made in <span class="month-name">{{ selected_month }}</span> {{ selected_year }}: {{ data.actual_payments }}</p>
+                    <p class="accent-teal font-bold mb-2">Total payments intended for <span class="month-name">{{ selected_month }}</span> {{ selected_year }}: {{ data.intended_payments }}</p>
+                    <p class="accent-teal font-bold">Total Balances in <span class="month-name">{{ selected_month }}</span> {{ selected_year }}: {{ data.total_balance }}</p>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    <!-- Your JavaScript script if necessary -->
+    <script>
+        const monthNames = {
+            1: "January", 2: "February", 3: "March", 4: "April", 5: "May", 6: "June",
+            7: "July", 8: "August", 9: "September", 10: "October", 11: "November", 12: "December"
+        };
+        const monthElements = document.querySelectorAll('.month-name');
+        monthElements.forEach(function(element) {
+            const monthNumber = parseInt(element.textContent, 10);
+            const monthName = monthNames[monthNumber] || monthNumber;
+            element.textContent = monthName;
+        });
+    </script>
 </body>
 </html>

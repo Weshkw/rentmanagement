@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <div>{% include "navbar.html" %}</div>
+
+
+<div class="tenant-details">
+    <h2>Tenant Details</h2>
+    <p>Name: {{ tenant.tenant_name }}</p>
+    <p>National ID Number: {{ tenant.national_id_number }}</p>
+    <p>Phone: {{ tenant.phone }}</p>
+    <p>Emergency Contact Name: {{ tenant.emergency_contact_name }}</p>
+    <p>Emergency Contact Phone: {{ tenant.emergency_contact_phone }}</p>
+    <p>Emergency Contact Relationship: {{ tenant.emergency_contact_relationship }}</p>
+    <p>Rental Unit: {{ tenant.rental_unit_occupied.unit_identity }}</p>
+    <p>Tenancy Start Date: {{ tenant.date_tenancy_starts }}</p>
+    <p>Tenancy End Date: {{ tenant.date_tenancy_ends }}</p>
+</div>
+
+</body>
+</html>

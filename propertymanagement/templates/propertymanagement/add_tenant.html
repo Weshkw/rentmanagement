@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Add Tenant</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+</head>
+<body class="bg-gray-100">
+    {% include "navbar.html" %}
+    <div class="container mx-auto py-8 px-4">
+        <h1 class="text-3xl font-bold mb-4 text-center md:text-left">Add Tenant to {{ rental_unit.unit_identity }}</h1>
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <form method="post" class="space-y-4">
+                {% csrf_token %}
+                <div>
+                    <label for="tenant_name" class="block text-gray-700 font-bold mb-2">Tenant Name:</label>
+                    <input type="text" id="tenant_name" name="tenant_name" required class="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div>
+                    <label for="national_id_number" class="block text-gray-700 font-bold mb-2">National ID Number:</label>
+                    <input type="text" id="national_id_number" name="national_id_number" class="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div>
+                    <label for="phone" class="block text-gray-700 font-bold mb-2">Phone:</label>
+                    <input type="text" id="phone" name="phone" class="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div>
+                    <label for="date_tenancy_starts" class="block text-gray-700 font-bold mb-2">Date Tenancy Starts:</label>
+                    <input type="date" id="date_tenancy_starts" name="date_tenancy_starts" required class="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div>
+                    <label for="emergency_contact_name" class="block text-gray-700 font-bold mb-2">Emergency Contact Name:</label>
+                    <input type="text" id="emergency_contact_name" name="emergency_contact_name" class="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div>
+                    <label for="emergency_contact_phone" class="block text-gray-700 font-bold mb-2">Emergency Contact Phone:</label>
+                    <input type="text" id="emergency_contact_phone" name="emergency_contact_phone" class="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div>
+                    <label for="emergency_contact_relationship" class="block text-gray-700 font-bold mb-2">Emergency Contact Relationship:</label>
+                    <input type="text" id="emergency_contact_relationship" name="emergency_contact_relationship" class="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Save</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

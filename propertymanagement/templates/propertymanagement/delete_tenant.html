@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Delete Tenant</title>
+</head>
+<body>
+    {% include "navbar.html" %}
+    <h1>Delete Tenant</h1>
+    <p>Are you sure you want to delete the tenant: {{ tenant.tenant_name }}?</p>
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit">Yes, Delete</button>
+        <a href="{% url 'propertymanagement:management_home' %}">Cancel</a>
+    </form>
+</body>
+</html>

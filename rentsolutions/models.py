@@ -3,11 +3,14 @@ from django.contrib.auth.models import AbstractUser, BaseUserManager, Group, Per
 from django.db.models import Sum
 from django.core.exceptions import ValidationError
 from decimal import Decimal
+import logging
 from datetime import timedelta
 import calendar
 from dateutil.relativedelta import relativedelta
 from datetime import datetime
 from django.db.models import Sum, Q
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from django.utils import timezone
 
 
@@ -50,6 +53,8 @@ class CustomUser(AbstractUser):
 
     def __str__(self):
         return self.full_name
+    
+
 
 
 class Landlord(models.Model):
@@ -66,13 +71,17 @@ class RentalProperty(models.Model):
     name = models.CharField(max_length=255)
     landlord = models.ForeignKey('Landlord', on_delete=models.CASCADE, related_name='properties')
     location = models.TextField()
-    total_units = models.PositiveIntegerField(default=1)
+    total_units = models.PositiveIntegerField(default=0)
     amenities = models.TextField(blank=True, null=True)
     date_registered = models.DateField(auto_now_add=True)
     date_updated = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return self.name
+    
+
+
+
     
 
 class RentalPropertyManager(models.Model):
@@ -102,10 +111,6 @@ class RentalUnit(models.Model):
             self.current_monthly_rent_rate.unit_absolute_identity = self.id
             self.current_monthly_rent_rate.save()
 
-    def delete(self, *args, **kwargs):
-        rental_property = self.property_with_rental_unit
-        super().delete(*args, **kwargs)
-        rental_property.update_total_units()
 
     def update_total_units(self):
         rental_property = self.property_with_rental_unit
@@ -116,8 +121,13 @@ class RentalUnit(models.Model):
         return f'{self.unit_identity} in {self.property_with_rental_unit.name}'
     
 
+logger = logging.getLogger(__name__)
 
-
+@receiver(post_delete, sender=RentalUnit)
+def update_rental_property_total_units(sender, instance, **kwargs):
+    rental_property = instance.property_with_rental_unit
+    rental_property.total_units = rental_property.rentalunit_set.count()
+    rental_property.save()
 
 
 class Tenant(models.Model):
@@ -132,6 +142,7 @@ class Tenant(models.Model):
     emergency_contact_phone = models.CharField(max_length=15, blank=True, null=True)
     emergency_contact_relationship = models.CharField(max_length=15, blank=True, null=True)
 
+
     @property
     def Tenant_Monthly_Rental_balances(self):
         balances = {}
@@ -142,44 +153,142 @@ class Tenant(models.Model):
             unit_absolute_identity=self.rental_unit_occupied.id
         ).order_by('start_date')
 
-        # Iterate over the applicable rent rates
-        for rent_rate in applicable_rent_rates:
-            start_date = rent_rate.start_date
-            end_date = rent_rate.end_date if rent_rate.end_date else today
+        # Determine the start and end dates for rent calculation
+        start_date = self.date_tenancy_starts
+        end_date = self.date_tenancy_ends or today
 
-            # Iterate over the months between start_date and end_date
-            current_date = start_date
-            while current_date <= end_date:
-                month = current_date.month
-                year = current_date.year
+        # Calculate the prorated rent for the first month
+        first_month = start_date.month
+        first_year = start_date.year
+        _, days_in_first_month = calendar.monthrange(first_year, first_month)
+        occupied_days_first_month = days_in_first_month - start_date.day + 1
 
-                # Calculate the intended payments for this month
-                total_payments = RentPayment.objects.filter(
-                    tenant_paying=self,
-                    intended_payment_month=str(month).zfill(2),
-                    intended_payment_year=str(year)
-                ).aggregate(total_amount=Sum('amount_paid'))['total_amount'] or 0
+        rent_rate_first_month = applicable_rent_rates.filter(
+            start_date__lte=datetime(first_year, first_month, 1)
+        ).order_by('-start_date').first()
+
+        if rent_rate_first_month:
+            prorated_rent_first_month = rent_rate_first_month.rent_rate * occupied_days_first_month / days_in_first_month
+
+            # Calculate the intended payments for the first month
+            total_payments_first_month = RentPayment.objects.filter(
+                tenant_paying=self,
+                intended_payment_month=str(first_month).zfill(2),
+                intended_payment_year=str(first_year)
+            ).aggregate(total_amount=Sum('amount_paid'))['total_amount'] or 0
+
+            # Calculate the rent balance for the first month
+            rent_balance_first_month = prorated_rent_first_month - total_payments_first_month
+
+            # Round the rent balance to two decimal places
+            balances[f"{first_year}-{str(first_month).zfill(2)}"] = round(max(Decimal(0), rent_balance_first_month), 2)
+
+        # Iterate over the remaining full months
+        current_date = start_date + relativedelta(months=1)
+        while current_date < end_date:
+            month = current_date.month
+            year = current_date.year
+
+            # Calculate the intended payments for this month
+            total_payments = RentPayment.objects.filter(
+                tenant_paying=self,
+                intended_payment_month=str(month).zfill(2),
+                intended_payment_year=str(year)
+            ).aggregate(total_amount=Sum('amount_paid'))['total_amount'] or 0
+
+            # Get the applicable rent rate for the current month
+            rent_rate = applicable_rent_rates.filter(
+                start_date__lte=datetime(year, month, 1)
+            ).order_by('-start_date').first()
+
+            if rent_rate:
+                # Calculate the full month's rent
+                full_month_rent = rent_rate.rent_rate
 
                 # Calculate the rent balance for this month
-                rent_balance = rent_rate.rent_rate - total_payments
-                balances[f"{year}-{str(month).zfill(2)}"] = max(Decimal(0), rent_balance)
+                rent_balance = full_month_rent - total_payments
 
-                # Move to the next month
-                current_date += relativedelta(months=1)
+                # Round the rent balance to two decimal places
+                balances[f"{year}-{str(month).zfill(2)}"] = round(max(Decimal(0), rent_balance), 2)
+
+            # Move to the next month
+            current_date += relativedelta(months=1)
+
+        # Calculate the rent balance for the last month
+        if end_date != today:
+            last_month = end_date.month
+            last_year = end_date.year
+
+            rent_rate_last_month = applicable_rent_rates.filter(
+                start_date__lte=datetime(last_year, last_month, 1)
+            ).order_by('-start_date').first()
+
+            if rent_rate_last_month:
+                # Calculate the full month's rent
+                full_month_rent = rent_rate_last_month.rent_rate
+
+                # Calculate the intended payments for the last month
+                total_payments_last_month = RentPayment.objects.filter(
+                    tenant_paying=self,
+                    intended_payment_month=str(last_month).zfill(2),
+                    intended_payment_year=str(last_year)
+                ).aggregate(total_amount=Sum('amount_paid'))['total_amount'] or 0
+
+                # Calculate the rent balance for the last month
+                rent_balance_last_month = full_month_rent - total_payments_last_month
+
+                # Round the rent balance to two decimal places
+                balances[f"{last_year}-{str(last_month).zfill(2)}"] = round(max(Decimal(0), rent_balance_last_month), 2)
+
+        # Calculate the rent balance for the current month
+        if end_date == today:
+            current_month = today.month
+            current_year = today.year
+
+            rent_rate_current_month = applicable_rent_rates.filter(
+                start_date__lte=datetime(current_year, current_month, 1)
+            ).order_by('-start_date').first()
+
+            if rent_rate_current_month:
+                # Calculate the full month's rent
+                full_month_rent = rent_rate_current_month.rent_rate
+
+                # Calculate the intended payments for the current month
+                total_payments_current_month = RentPayment.objects.filter(
+                    tenant_paying=self,
+                    intended_payment_month=str(current_month).zfill(2),
+                    intended_payment_year=str(current_year)
+                ).aggregate(total_amount=Sum('amount_paid'))['total_amount'] or 0
+
+                # Calculate the rent balance for the current month
+                rent_balance_current_month = full_month_rent - total_payments_current_month
+
+                # Round the rent balance to two decimal places
+                balances[f"{current_year}-{str(current_month).zfill(2)}"] = round(max(Decimal(0), rent_balance_current_month), 2)
 
         return balances
-
+        
+   
     def save(self, *args, **kwargs):
         if self.pk is None:  # Only when the instance is newly created
             self.rental_unit_occupied.occupied = True
             self.rental_unit_occupied.save(update_fields=['occupied'])
         super().save(*args, **kwargs)
 
+    
+
     def __str__(self):
         if self.tenant_name:
             return f'{self.tenant_name}, rental_unit:{self.rental_unit_occupied.unit_identity}'
         else:
             return f'Tenant {self.pk}, rental_unit:{self.rental_unit_occupied.unit_identity}'
+        
+
+@receiver(post_delete, sender=Tenant)
+def set_rental_unit_unoccupied(sender, instance, **kwargs):
+    rental_unit = instance.rental_unit_occupied
+    rental_unit.occupied = False
+    rental_unit.save(update_fields=['occupied'])
 
 
 class RentalUnitMonthlyRentRate(models.Model):
@@ -244,41 +353,7 @@ class RentPayment(models.Model):
         if self.tenant_paying:
             self.rental_unit_paid_for = self.tenant_paying.rental_unit_occupied.unit_identity
         super().save(*args, **kwargs)
-        self.handle_surplus_payment()
 
-    def handle_surplus_payment(self):
-        tenant = self.tenant_paying
-        payment_date = self.date_paid
-        payment_month = int(self.intended_payment_month)
-        payment_year = int(self.intended_payment_year)
-
-        # Get the applicable rent rate for the tenant's rental unit and payment month
-        rent_rate = RentalUnitMonthlyRentRate.objects.filter(
-            unit_absolute_identity=tenant.rental_unit_occupied.id,
-            start_date__lte=datetime(payment_year, payment_month, 1)
-        ).order_by('-start_date').first()
-
-        if rent_rate:
-            agreed_rent = rent_rate.rent_rate
-            surplus = self.amount_paid - agreed_rent
-
-            if surplus > 0:
-                # Adjust the current payment to the agreed rent amount
-                self.amount_paid = agreed_rent
-                self.payment_details = f"Adjusted payment to agreed rent: {agreed_rent}. Surplus: {surplus}"
-                self.save(update_fields=['amount_paid', 'payment_details'])
-
-                # Create a new payment entry for the next month's prepayment
-                next_month = datetime(payment_year, payment_month, 1) + relativedelta(months=1)
-                new_payment = RentPayment.objects.create(
-                    tenant_paying=tenant,
-                    amount_paid=surplus,
-                    date_paid=payment_date,
-                    intended_payment_month=str(next_month.month).zfill(2),
-                    intended_payment_year=str(next_month.year),
-                    payment_details=f"Prepayment for {next_month.strftime('%B %Y')} (from surplus payment)"
-                )
 
     def __str__(self):
-        return f"Payment - {self.date_paid} unit- {self.rental_unit_paid_for}"
-
+        return f"Payment - {self.date_paid} unit- {self.rental_unit_paid_for}" 

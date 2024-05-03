@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+</head>
+<body class="bg-gray-100">
+    <div>{% include "navbar.html" %}</div>
+    <div class="container mx-auto py-8 px-4">
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-2xl font-bold mb-4">Tenant Details</h2>
+            <div class="mb-4">
+                <p class="text-gray-700"><strong>Name:</strong> {{ tenant.tenant_name }}</p>
+                <p class="text-gray-700"><strong>National ID Number:</strong> {{ tenant.national_id_number }}</p>
+                <p class="text-gray-700"><strong>Phone:</strong> {{ tenant.phone }}</p>
+                <p class="text-gray-700"><strong>Emergency Contact Name:</strong> {{ tenant.emergency_contact_name }}</p>
+                <p class="text-gray-700"><strong>Emergency Contact Phone:</strong> {{ tenant.emergency_contact_phone }}</p>
+                <p class="text-gray-700"><strong>Emergency Contact Relationship:</strong> {{ tenant.emergency_contact_relationship }}</p>
+                <p class="text-gray-700"><strong>Rental Unit:</strong> {{ tenant.rental_unit_occupied.unit_identity }}</p>
+                <p class="text-gray-700"><strong>Tenancy Start Date:</strong> {{ tenant.date_tenancy_starts }}</p>
+                <p class="text-gray-700"><strong>Tenancy End Date:</strong> {{ tenant.date_tenancy_ends }}</p>
+            </div>
+            <div class="flex justify-end">
+                <a href="{% url 'propertymanagement:edit_tenant' tenant.pk %}" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mr-2">Edit details</a>
+                <a href="{% url 'propertymanagement:delete_tenant' tenant.pk %}" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Vacate</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

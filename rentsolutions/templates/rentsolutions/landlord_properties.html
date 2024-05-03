@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rental Properties</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Custom CSS styles */
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #f3f4f6;
+            color: #374151;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+        .modal-content {
+            background-color: #fff;
+            margin: 5% auto;
+            padding: 20px;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            max-width: 80%;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover,
+        .close:focus {
+            color: #333;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background-color: #4caf50;
+            color: white;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+        .btn:hover {
+            background-color: #45a049;
+        }
+        .property-card {
+            background-color: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .property-card h2 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        .property-card p {
+            margin-bottom: 10px;
+            color: #666;
+        }
+        .property-card .action-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        .property-card .unit-buttons button {
+            margin-right: 10px;
+        }
+        .property-card .unit-buttons button:last-child {
+            margin-right: 0;
+        }
+        .modal form label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .modal form input[type="text"],
+        .modal form input[type="number"],
+        .modal form input[type="date"],
+        .modal form textarea {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Navbar -->
+{% include "navbar.html" %}
+
+<!-- Main Content -->
+<div class="container">
+    <h1 class="text-center text-3xl mb-8">My Rental Properties</h1>
+
+    <!-- Rental Properties -->
+    {% if properties %}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {% for property in properties %}
+        <div class="property-card">
+            <h2 class="font-extrabold">{{ property.name }}</h2>
+            <p>Location: {{ property.location }}</p>
+            <p>Total units: {{ property.total_units }}</p>
+            <a href="{% url 'manage_property_managers' %}">Hire manager for {{ property.name }} </a>
+            <div class="action-buttons">
+                <button class="btn btn-primary" onclick="openUpdatePropertyModal('{{ property.pk }}', '{{ property.name }}', '{{ property.location }}', '{{ property.amenities }}')">Edit {{ property.name }}</button>
+                <button class="btn btn-danger" onclick="openDeletePropertyModal('{{ property.pk }}')">Delete {{ property.name }}</button>
+            </div>
+            <div class="unit-buttons mt-4">
+                <button class="btn btn-primary" onclick="openAddUnitModal('{{ property.pk }}')">Add Unit</button>
+                {% if property.rentalunit_set.all %}
+                    {% for unit in property.rentalunit_set.all %}
+                    <div>
+                        <h4>{{ unit.unit_identity }}</h4>
+                        <button class="btn btn-primary" onclick="openUpdateUnitModal('{{ unit.pk }}', '{{ unit.unit_identity }}', '{{ unit.current_monthly_rent_rate.rent_rate }}', '{{ unit.current_monthly_rent_rate.start_date|date:'Y-m-d' }}')">Edit {{ unit.unit_identity }}</button>
+                        <button class="btn btn-danger" onclick="openDeleteUnitModal('{{ unit.pk }}')">Delete {{ unit.unit_identity }}</button>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p>No rental units available.</p>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-center">You don't have any rental properties yet.</p>
+    {% endif %}
+</div>
+
+<div class="property-card add-property-card">
+    <a href="#" class="add-property-link" onclick="openAddPropertyModal()">
+        <i class="fas fa-plus add-property-icon"></i>
+        Add Property
+    </a>
+</div>
+
+<!-- Add Rental Property Modal -->
+<div id="addPropertyModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <span class="close" onclick="closeModal('addPropertyModal')">&times;</span>
+            <h2>Add Rental Property</h2>
+        </div>
+        <div class="modal-body">
+            <form id="addPropertyForm" method="post" action="{% url 'add_rental_property' %}">
+                {% csrf_token %}
+                <label for="name">Name:</label>
+                <input type="text" id="name" name="name" required>
+                <label for="location">Location:</label>
+                <input type="text" id="location" name="location" required>
+                <label for="amenities">Amenities:</label>
+                <textarea id="amenities" name="amenities"></textarea>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button type="submit" class="btn" form="addPropertyForm">Add Property</button>
+        </div>
+    </div>
+</div>
+
+
+    <!-- Update Property Modal -->
+<div id="updatePropertyModal" class="modal">
+    <div class="modal-content">
+        <!-- The content will be dynamically generated by JavaScript -->
+    </div>
+</div>
+
+
+<!-- Delete Property Modal -->
+<div id="deletePropertyModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h2>Delete Property</h2>
+        <p>Are you sure you want to delete this property?</p>
+        <form id="deletePropertyForm" method="post" action="{% url 'delete_property' 0 %}">
+            {% csrf_token %}
+            <button type="submit">Delete</button>
+        </form>
+    </div>
+</div>
+
+
+
+<!-- Add Rental Unit Modal -->
+<div id="addUnitModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeModal('addUnitModal')">&times;</span>
+        <h2>Add Rental Unit</h2>
+        <form id="addUnitForm" method="post" action="{% url 'add_rental_unit' 0 %}">
+            {% csrf_token %}
+            <label for="unit_identity">Unit Identity:</label>
+            <input type="text" id="unit_identity" name="unit_identity" required>
+            <label for="rent_rate">Monthly rent:</label>
+            <input type="number" id="rent_rate" name="rent_rate"  required>
+            <label for="start_date">Monthly rent start date:</label>
+            <input type="date" id="start_date" name="start_date" min="yyyy-mm-01" required>
+            <button type="submit">Add Unit</button>
+        </form>
+    </div>
+</div>
+
+
+
+<!-- Update Rental Unit Modal -->
+<div id="updateUnitModal" class="modal">
+    <div class="modal-content">
+        
+    </div>
+</div>
+
+
+<!-- Delete Rental Unit Modal -->
+<div id="deleteUnitModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeModal('deleteUnitModal')">&times;</span>
+        <h2>Delete Rental Unit</h2>
+        <p>Are you sure you want to delete this rental unit?</p>
+        <form id="deleteUnitForm" method="post">
+            {% csrf_token %}
+            <input type="hidden" id="unitIdToDelete" name="unit_id" value="">
+            <button type="submit">Delete</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    const deleteUnitModal = document.getElementById('deleteUnitModal');
+    const deleteUnitForm = document.getElementById('deleteUnitForm');
+    const deleteUnitCloseBtn = deleteUnitModal.querySelector('.close');
+
+    function openDeleteUnitModal(unitId) {
+        const unitIdInput = document.getElementById('unitIdToDelete');
+        unitIdInput.value = unitId;
+        deleteUnitModal.style.display = "block";
+    }
+
+    deleteUnitCloseBtn.addEventListener("click", () => closeModal('deleteUnitModal'));
+
+    window.addEventListener("click", event => {
+        if (event.target === deleteUnitModal) {
+            closeModal('deleteUnitModal');
+        }
+    });
+
+    deleteUnitForm.addEventListener('submit', function (event) {
+        event.preventDefault(); // Prevent the default form submission
+        const unitId = document.getElementById('unitIdToDelete').value;
+        const formAction = `/rental-units/${unitId}/delete/`; // Set the form action dynamically
+        this.action = formAction;
+        this.submit(); // Submit the form
+    });
+</script>
+
+
+
+
+
+
+
+
+
+<script>
+    function openUpdateUnitModal(unitPk, unitIdentity, rentRate, startDate) {
+        const modal = document.getElementById('updateUnitModal');
+        const modalContent = modal.querySelector('.modal-content');
+
+        // Clear the existing modal content
+        modalContent.innerHTML = '';
+
+        // Create a new modal content
+        const newModalContent = document.createElement('div');
+        newModalContent.innerHTML = `
+            <span class="close">&times;</span>
+            <h2>Update Rental Unit</h2>
+            <form id="updateUnitForm" method="post" action="{% url 'update_rental_unit' 0 %}">
+                {% csrf_token %}
+                <label for="unit_identity">Unit Identity:</label>
+                <input type="text" id="unit_identity" name="unit_identity" value="${unitIdentity}" required>
+                <label for="rent_rate">Rent Rate:</label>
+                <input type="number" id="rent_rate" name="rent_rate" value="${rentRate}" required>
+                <label for="start_date">Start Date:</label>
+                <input type="date" id="start_date" name="start_date" value="${startDate}" required>
+                <button type="submit">Update Unit</button>
+            </form>
+        `;
+
+        // Replace the modal content with the new content
+        modalContent.appendChild(newModalContent);
+
+        // Update the form action with the unit ID
+        const updateUnitForm = modal.querySelector('#updateUnitForm');
+        const formAction = "{% url 'update_rental_unit' 0 %}".replace(/0/, unitPk);
+        updateUnitForm.action = formAction;
+
+        // Add event listener for the close button
+        const closeBtn = modal.querySelector('.close');
+        closeBtn.addEventListener('click', () => modal.style.display = 'none');
+
+        // Add event listener for clicking outside the modal
+        window.addEventListener('click', (event) => {
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        });
+
+        // Show the modal
+        modal.style.display = 'block';
+    }
+</script>
+
+
+
+
+
+
+
+
+    <script>
+        function openAddPropertyModal() {
+            const modal = document.getElementById('addPropertyModal');
+            modal.style.display = "block";
+        }
+
+        function closeModal(modalId) {
+            const modal = document.getElementById(modalId);
+            modal.style.display = "none";
+        }
+
+        const propertyModal = document.getElementById('addPropertyModal');
+        const closeBtn = propertyModal.querySelector(".close");
+        closeBtn.addEventListener("click", () => closeModal('addPropertyModal'));
+
+        window.addEventListener("click", event => {
+            if (event.target === propertyModal) {
+                closeModal('addPropertyModal');
+            }
+        });
+    </script>
+
+
+<script>
+    function openAddUnitModal(propertyId) {
+    const modal = document.getElementById('addUnitModal');
+    const form = document.getElementById('addUnitForm');
+    const formAction = "{% url 'add_rental_unit' 0 %}".replace(/0/, propertyId);
+    form.action = formAction;
+    modal.style.display = "block";
+}
+
+    function closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        modal.style.display = "none";
+    }
+
+    const unitModal = document.getElementById('addUnitModal');
+    const closeButtonElement = unitModal.querySelector(".close");
+    closeButtonElement.addEventListener("click", () => closeModal('addUnitModal'));
+
+    window.addEventListener("click", event => {
+        if (event.target === unitModal) {
+            closeModal('addUnitModal');
+        }
+    });
+</script>
+
+
+
+<script>
+    function openUpdatePropertyModal(propertyId, propertyName, propertyLocation, propertyAmenities) {
+    const modal = document.getElementById('updatePropertyModal');
+    const modalContent = modal.querySelector('.modal-content');
+
+    // Clear the existing modal content
+    modalContent.innerHTML = '';
+
+    // Create a new modal content
+    const newModalContent = document.createElement('div');
+    newModalContent.innerHTML = `
+        <span class="close">&times;</span>
+        <h2>Update Property</h2>
+        <form id="updatePropertyForm" method="post" action="{% url 'update_property' 0 %}">
+            {% csrf_token %}
+            <label for="name">Name:</label>
+            <input type="text" id="name" name="name" value="${propertyName}" required>
+            <label for="location">Location:</label>
+            <input type="text" id="location" name="location" value="${propertyLocation}" required>
+            <label for="amenities">Amenities:</label>
+            <textarea id="amenities" name="amenities">${propertyAmenities}</textarea>
+            <button type="submit">Update Property</button>
+        </form>
+    `;
+
+    // Replace the modal content with the new content
+    modalContent.appendChild(newModalContent);
+
+    // Update the form action with the property ID
+    const updatePropertyForm = modal.querySelector('#updatePropertyForm');
+    const formAction = "{% url 'update_property' 0 %}".replace(/0/, propertyId);
+    updatePropertyForm.action = formAction;
+
+    // Add event listener for the close button
+    const closeBtn = modal.querySelector('.close');
+    closeBtn.addEventListener('click', () => modal.style.display = 'none');
+
+    // Add event listener for clicking outside the modal
+    window.addEventListener('click', (event) => {
+        if (event.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+
+    // Show the modal
+    modal.style.display = 'block';
+}
+</script>
+
+
+<script>
+    const deletePropertyModal = document.getElementById('deletePropertyModal');
+    const deletePropertyForm = document.getElementById('deletePropertyForm');
+    const deleteCloseBtn = deletePropertyModal.querySelector('.close');
+
+    function openDeletePropertyModal(propertyId) {
+        const formAction = "{% url 'delete_property' 0 %}".replace(/0/, propertyId);
+        deletePropertyForm.action = formAction;
+        deletePropertyModal.style.display = "block";
+    }
+
+    deleteCloseBtn.addEventListener("click", () => deletePropertyModal.style.display = "none");
+
+    window.addEventListener("click", event => {
+        if (event.target === deletePropertyModal) {
+            deletePropertyModal.style.display = "none";
+        }
+    });
+</script>
+
+
+</body>
+</html>   

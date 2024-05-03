@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Payment History</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+</head>
+<body class="bg-gray-100">
+    {% include "navbar.html" %}
+    <div class="container mx-auto py-8 px-4">
+        <h1 class="text-3xl font-bold mb-4 text-center md:text-left">Payment History for {{ tenant.tenant_name }}</h1>
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <div class="overflow-x-auto">
+                <table class="w-full table-auto">
+                    <thead>
+                        <tr class="bg-gray-200">
+                            <th class="px-4 py-2">Payment Date</th>
+                            <th class="px-4 py-2">Amount Paid</th>
+                            <th class="px-4 py-2">Intended Month</th>
+                            <th class="px-4 py-2">Intended Year</th>
+                            <th class="px-4 py-2">Payment Details</th>
+                            <th class="px-4 py-2">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for payment in payments %}
+                        <tr class="{% cycle 'bg-white' 'bg-gray-100' %}">
+                            <td class="border px-4 py-2">{{ payment.date_paid }}</td>
+                            <td class="border px-4 py-2">{{ payment.amount_paid }}</td>
+                            <td class="border px-4 py-2">{{ payment.get_intended_payment_month_display }}</td>
+                            <td class="border px-4 py-2">{{ payment.intended_payment_year }}</td>
+                            <td class="border px-4 py-2">{{ payment.payment_details }}</td>
+                            <td class="border px-4 py-2">
+                                <a href="{% url 'propertymanagement:edit_payment' payment.id %}" class="text-blue-500 hover:text-blue-700">Edit Payment</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

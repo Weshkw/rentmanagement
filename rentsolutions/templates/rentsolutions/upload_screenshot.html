@@ -72,3 +72,33 @@
 </script>
 </body>
 </html>
+
+
+
+
+
+
+# Iterate over the months between start_date and end_date
+            current_date = start_date
+            while current_date <= end_date:
+                month = current_date.month
+                year = current_date.year
+
+                print(f"Calculating total payments for {self.tenant_name}, {month}/{year}")
+
+                rent_payments = RentPayment.objects.filter(
+                    tenant_paying=self,
+                    intended_payment_month=str(month).zfill(2),
+                    intended_payment_year=str(year)
+                )
+                print(f"RentPayment records for {self.tenant_name}, {month}/{year}: {rent_payments}")
+
+                total_payments = rent_payments.aggregate(total_amount=Sum('amount_paid'))['total_amount'] or 0
+                print(f"Total payments for {self.tenant_name}, {month}/{year}: {total_payments}")
+
+                # Calculate the rent balance for this month
+                rent_balance = rent_rate.rent_rate - total_payments
+                balances[f"{year}-{str(month).zfill(2)}"] = max(Decimal(0), rent_balance)
+
+                # Move to the next month
+                current_date += relativedelta(months=1)

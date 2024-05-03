@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rent Collection and Documentation</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
+</head>
+<body class="bg-gray-100">
+    {% include "navbar.html" %}
+    <div class="container mx-auto py-8 px-4">
+        <h1 class="text-3xl font-bold mb-4 text-center md:text-left">Collect Rent</h1>
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <p class="mb-2"><strong>Rental Property:</strong> {{ rental_property.name }}</p>
+            <p class="mb-2"><strong>Tenant:</strong> {{ tenant.tenant_name }}</p>
+            <p class="mb-4"><strong>Unit:</strong> {{ rental_unit.unit_identity }}</p>
+
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="bg-{% if message.tags == 'error' %}red-100{% else %}green-100{% endif %} border border-{% if message.tags == 'error' %}red-400{% else %}green-400{% endif %} text-{% if message.tags == 'error' %}red-700{% else %}green-700{% endif %} px-4 py-3 rounded mb-4" role="alert">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+
+            <form method="post" class="space-y-4">
+                {% csrf_token %}
+                <div>
+                    <label for="amount_paid" class="block text-gray-700 font-bold mb-2">Amount Paid:</label>
+                    <input type="number" step="0.01" name="amount_paid" id="amount_paid" required class="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div>
+                    <label for="date_paid" class="block text-gray-700 font-bold mb-2">Date Paid:</label>
+                    <input type="date" name="date_paid" id="date_paid" required class="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                </div>
+                <div>
+                    <label for="intended_payment_month" class="block text-gray-700 font-bold mb-2">Intended Payment Month:</label>
+                    <select name="intended_payment_month" id="intended_payment_month" required class="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                        <option value="">Select Month</option>
+                        {% for month_value, month_name in payment_month_choices %}
+                            <option value="{{ month_value }}">{{ month_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="intended_payment_year" class="block text-gray-700 font-bold mb-2">Intended Payment Year:</label>
+                    <select name="intended_payment_year" id="intended_payment_year" required class="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline">
+                        <option value="">Select Year</option>
+                        {% for year in payment_year_choices %}
+                            <option value="{{ year }}">{{ year }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="payment_details" class="block text-gray-700 font-bold mb-2">Payment Details:</label>
+                    <textarea name="payment_details" id="payment_details" class="appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"></textarea>
+                </div>
+                <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">Record Payment</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

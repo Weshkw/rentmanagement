@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Tenant</title>
+</head>
+<body>
+    {% include "navbar.html" %}
+    <h1>Edit Tenant</h1>
+    <form method="post">
+        {% csrf_token %}
+        <label for="tenant_name">Tenant Name:</label>
+        <input type="text" id="tenant_name" name="tenant_name" value="{{ tenant.tenant_name }}" required><br>
+
+        <label for="national_id_number">National ID Number:</label>
+        <input type="text" id="national_id_number" name="national_id_number" value="{{ tenant.national_id_number }}"><br>
+
+        <label for="phone">Phone:</label>
+        <input type="text" id="phone" name="phone" value="{{ tenant.phone }}"><br>
+
+        <label for="date_tenancy_starts">Date Tenancy Starts:</label>
+        <input type="date" id="date_tenancy_starts" name="date_tenancy_starts" value="{{ tenant.date_tenancy_starts|date:'Y-m-d' }}" required><br>
+
+
+
+        <label for="emergency_contact_name">Emergency Contact Name:</label>
+        <input type="text" id="emergency_contact_name" name="emergency_contact_name" value="{{ tenant.emergency_contact_name }}"><br>
+
+        <label for="emergency_contact_phone">Emergency Contact Phone:</label>
+        <input type="text" id="emergency_contact_phone" name="emergency_contact_phone" value="{{ tenant.emergency_contact_phone }}"><br>
+
+        <label for="emergency_contact_relationship">Emergency Contact Relationship:</label>
+        <input type="text" id="emergency_contact_relationship" name="emergency_contact_relationship" value="{{ tenant.emergency_contact_relationship }}"><br>
+
+        <button type="submit">Save Changes</button>
+    </form>
+</body>
+</html>
