@@ -1,0 +1,2 @@
+
+A software made for landlords to manage their rental properties easily. It helps track rental income, expenses, and tasks like repairs. Landlords can add their properties, set rent for each unit, and keep tabs on everything. Caretakers can handle tenants, add or remove them from units, and record rent payments. It's simple: landlords stay informed, while caretakers keep things running smoothly.
