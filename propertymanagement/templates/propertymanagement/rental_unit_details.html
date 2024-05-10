@@ -1,0 +1,52 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rental {{ rentalunit.unit_identity }} Details</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+</head>
+<body>
+    {% include "navbar.html" %}
+    <div class="container">
+        <h1>Rental Unit Details</h1>
+        <div class="unit-details">
+            <p><strong>Unit Identity:</strong> {{ rentalunit.unit_identity }}</p>
+            <p><strong>Property:</strong> {{ rentalunit.property_with_rental_unit.name }}</p>
+            <p><strong>Current Monthly Rent Rate:</strong> {{ rentalunit.current_monthly_rent_rate.rent_rate }}</p>
+            <p><strong>Occupied:</strong> {{ rentalunit.occupied|yesno:"Yes,No" }}</p>
+            <p>
+                <strong>Unit Notes:</strong>
+                <textarea id="unit-notes" rows="4">{{ rentalunit.unit_notes|default:"" }}</textarea>
+            </p>
+        </div>
+    </div>
+    <script>
+        $(document).ready(function() {
+            $('#unit-notes').on('blur', saveUnitNotes);
+        });
+
+        function saveUnitNotes() {
+            var unitNotes = $(this).val();
+            var rentalUnitId = {{ rentalunit.pk }};
+            $.ajax({
+                url: '{% url "propertymanagement:update_unit_notes" %}',
+                type: 'POST',
+                data: {
+                    'unit_notes': unitNotes,
+                    'rental_unit_id': rentalUnitId,
+                    'csrfmiddlewaretoken': '{{ csrf_token }}'
+                },
+                success: function(response) {
+                    console.log('Unit notes updated successfully');
+                },
+                error: function(xhr, errmsg, err) {
+                    console.log('Error updating unit notes: ' + errmsg);
+                }
+            });
+        }
+    </script>
+</body>
+</html>

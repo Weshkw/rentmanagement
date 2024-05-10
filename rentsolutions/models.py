@@ -101,6 +101,7 @@ class RentalUnit(models.Model):
     current_monthly_rent_rate = models.ForeignKey('RentalUnitMonthlyRentRate', on_delete=models.PROTECT,
                                                   related_name='monthly_rent')
     occupied = models.BooleanField(default=False)
+    unit_notes= models.TextField(blank=True, null=True)
 
     def save(self, *args, **kwargs):
         created = self.pk is None
@@ -109,7 +110,7 @@ class RentalUnit(models.Model):
         if created and self.current_monthly_rent_rate:
             self.current_monthly_rent_rate.rental_unit = self.unit_identity
             self.current_monthly_rent_rate.unit_absolute_identity = self.id
-            self.current_monthly_rent_rate.save()
+            self.current_monthly_rent_rate.save() 
 
 
     def update_total_units(self):

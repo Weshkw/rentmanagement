@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import management_home, collect_rent,payment_history,edit_payment,add_tenant,tenant_details,edit_tenant,delete_tenant
+from .views import management_home, collect_rent,payment_history,edit_payment,add_tenant,tenant_details,rentaunit_details,edit_tenant,delete_tenant,update_unit_notes
 
 app_name = 'propertymanagement'
 
@@ -12,5 +12,6 @@ urlpatterns = [
     path('tenant_details/<int:pk>/',tenant_details, name='tenant_details'),
     path('propertymanagement/edit_tenant/<int:tenant_id>/', edit_tenant, name='edit_tenant'),
     path('propertymanagement/delete_tenant/<int:tenant_id>/', delete_tenant, name='delete_tenant'),
-
+    path('unit/<int:pk>/', rentaunit_details, name='unit_details'),
+    path('update-unit-notes/', update_unit_notes, name='update_unit_notes'),
 ]

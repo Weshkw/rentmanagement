@@ -34,7 +34,9 @@
                                 {% for unit in rental_units %}
                                     {% if unit.property_with_rental_unit == property %}
                                         <tr class="{% cycle 'bg-white' 'bg-gray-100' %}">
-                                            <td class="border px-4 py-2">{{ unit.unit_identity }}</td>
+                                            <td class="border px-4 py-2"><a href="{% url 'propertymanagement:unit_details' unit.pk %}">{{ unit.unit_identity }}</a>
+                                            </td>
+
                                             <td class="border px-4 py-2">
                                                 {% with unit_tenant=unit.rental_units.first %}
                                                     {% if unit_tenant %}

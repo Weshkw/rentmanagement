@@ -1,13 +1,13 @@
 from django.contrib import admin
 import calendar
-from django.db.models import Sum,Q
+from django.db.models import Sum, Q
 from django.utils.html import format_html
 from .models import CustomUser, Landlord, RentalProperty, RentalUnit, Tenant, RentalUnitMonthlyRentRate, RentPayment, RentalPropertyManager
-
 
 class CustomUserAdmin(admin.ModelAdmin):
     list_display = ['full_name', 'phone_number', 'address', 'date_registered', 'date_updated']
     search_fields = ['full_name', 'phone_number', 'address']
+
 admin.site.register(CustomUser, CustomUserAdmin)
 
 class LandlordAdmin(admin.ModelAdmin):
@@ -20,6 +20,7 @@ class LandlordAdmin(admin.ModelAdmin):
         return obj.user.full_name
 
     search_fields = ['user__full_name', 'user__phone_number']
+
 admin.site.register(Landlord, LandlordAdmin)
 
 @admin.register(RentalPropertyManager)
@@ -31,30 +32,19 @@ class RentalPropertyManagerAdmin(admin.ModelAdmin):
 class RentalPropertyAdmin(admin.ModelAdmin):
     list_display = ['name', 'landlord', 'location', 'total_units', 'date_registered', 'date_updated']
     search_fields = ['name', 'location']
+
 admin.site.register(RentalProperty, RentalPropertyAdmin)
 
 class RentalUnitAdmin(admin.ModelAdmin):
-    list_display = ['id', 'property_with_rental_unit', 'unit_identity', 'current_monthly_rent_rate', 'occupied']
+    list_display = ['id', 'property_with_rental_unit', 'unit_identity', 'current_monthly_rent_rate', 'occupied', 'unit_notes']
     search_fields = ['unit_identity', 'property_with_rental_unit__name']
-    fields = ['property_with_rental_unit', 'unit_identity', 'current_monthly_rent_rate', 'occupied']
+    fields = ['property_with_rental_unit', 'unit_identity', 'current_monthly_rent_rate', 'occupied', 'unit_notes']
 
 admin.site.register(RentalUnit, RentalUnitAdmin)
 
-
-
-
 class TenantAdmin(admin.ModelAdmin):
     list_display = [
-        'tenant_name',
-        'rental_unit_occupied',
-        'date_tenancy_starts',
-        'date_tenancy_ends',
-        'national_id_number',
-        'phone',
-        'emergency_contact_name',
-        'emergency_contact_phone',
-        'emergency_contact_relationship',
-        'display_rental_balances',
+        'tenant_name', 'rental_unit_occupied', 'date_tenancy_starts', 'date_tenancy_ends', 'national_id_number', 'phone', 'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship', 'display_rental_balances',
     ]
 
     def display_rental_balances(self, obj):

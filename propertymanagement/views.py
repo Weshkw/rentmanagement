@@ -4,6 +4,9 @@ from django.contrib.auth import authenticate, login, logout
 from django.core.exceptions import ValidationError
 from django.contrib import messages
 import calendar
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 from decimal import Decimal
 from django.db.models import Sum
 from django.utils import timezone
@@ -167,8 +170,11 @@ def add_tenant(request, unit_id):
 @user_passes_test(is_rental_property_manager)
 def tenant_details(request, pk):
     tenant = get_object_or_404(Tenant, pk=pk)
+    balances = tenant.Tenant_Monthly_Rental_balances
+    total_balance = sum(balances.values())
     context = {
         'tenant': tenant,
+        'total_balance': total_balance,
         'is_rental_property_manager': True,
     }
     return render(request, 'propertymanagement/tenant.html', context)
@@ -224,3 +230,30 @@ def delete_tenant(request, tenant_id):
     return render(request, 'propertymanagement/delete_tenant.html', context)
 
 
+@login_required(login_url='login')
+@user_passes_test(is_rental_property_manager)
+def rentaunit_details(request, pk):
+    rentalunit = get_object_or_404(RentalUnit, pk=pk)
+    context = {
+        'rentalunit': rentalunit,
+        'is_rental_property_manager': True,
+    }
+    return render(request, 'propertymanagement/rental_unit_details.html', context)
+
+
+@csrf_exempt
+@require_POST
+def update_unit_notes(request):
+    if request.method == 'POST':
+        unit_notes = request.POST.get('unit_notes')
+        rental_unit_id = request.POST.get('rental_unit_id')
+
+        try:
+            rental_unit = RentalUnit.objects.get(pk=rental_unit_id)
+            rental_unit.unit_notes = unit_notes
+            rental_unit.save(update_fields=['unit_notes'])
+            return JsonResponse({'success': True})
+        except RentalUnit.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Rental unit not found'})
+    else:
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
