@@ -8,6 +8,7 @@ from rentsolutions.access import (
     operated_units,
     operator_required,
 )
+from rentsolutions.billing import ZERO
 from rentsolutions.reports import with_units_and_tenancies
 from rentsolutions.views import render_form
 
@@ -68,7 +69,7 @@ def tenant_detail(request, pk):
     context = {
         "tenant": tenant,
         "statement": reversed(statement),
-        "total_balance": sum(line.balance for line in statement),
+        "total_balance": sum((line.balance for line in statement), ZERO),
     }
     return render(request, "propertymanagement/tenant_detail.html", context)
 

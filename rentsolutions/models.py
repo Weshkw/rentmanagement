@@ -8,7 +8,7 @@ from django.db import models
 from django.db.models import Q
 from django.utils import timezone
 
-from .billing import monthly_rent, rate_start_for
+from .billing import ZERO, monthly_rent, rate_start_for
 
 
 class CustomUserManager(BaseUserManager):
@@ -219,11 +219,11 @@ class Tenant(models.Model):
 
     def balance_for(self, month, today=None):
         statement = self.rent_statement(today)
-        return next((line.balance for line in statement if line.month == month), Decimal(0))
+        return next((line.balance for line in statement if line.month == month), ZERO)
 
     @property
     def total_balance(self):
-        return sum((line.balance for line in self.rent_statement()), Decimal(0))
+        return sum((line.balance for line in self.rent_statement()), ZERO)
 
 
 class RentPayment(models.Model):

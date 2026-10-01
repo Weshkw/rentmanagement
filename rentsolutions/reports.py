@@ -7,7 +7,7 @@ from decimal import Decimal
 from django.db.models import Prefetch
 from django.utils import timezone
 
-from .billing import first_of_month
+from .billing import ZERO, first_of_month
 from .models import RentalPropertyManager, RentalUnit, Tenant
 
 
@@ -51,10 +51,10 @@ def property_month(rental_property, month):
         total_units=len(units),
         occupied_units=sum(1 for unit in units if unit.occupied),
         paid_in_month=sum(
-            (p.amount_paid for p in payments if first_of_month(p.date_paid) == month), Decimal(0)
+            (p.amount_paid for p in payments if first_of_month(p.date_paid) == month), ZERO
         ),
-        paid_for_month=sum((p.amount_paid for p in payments if p.period == month), Decimal(0)),
-        balance_for_month=sum((tenant.balance_for(month) for tenant in tenants), Decimal(0)),
+        paid_for_month=sum((p.amount_paid for p in payments if p.period == month), ZERO),
+        balance_for_month=sum((tenant.balance_for(month) for tenant in tenants), ZERO),
     )
 
 
@@ -67,5 +67,5 @@ def unit_income(unit, month):
             for payment in tenant.payments.all()
             if payment.period == month
         ),
-        Decimal(0),
+        ZERO,
     )

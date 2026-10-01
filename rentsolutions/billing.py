@@ -22,6 +22,7 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 CENT = Decimal("0.01")
+ZERO = Decimal("0.00")
 
 
 def first_of_month(day):
@@ -56,7 +57,7 @@ class MonthlyRent:
 
     @property
     def balance(self):
-        return max(self.rent_due - self.paid, Decimal(0))
+        return max(self.rent_due - self.paid, ZERO)
 
 
 def rate_in_force(rates, month):
@@ -79,7 +80,7 @@ def monthly_rent(*, tenancy_starts, tenancy_ends, rates, payments, today):
     the payment was for. Returns a list of MonthlyRent, oldest first.
     """
     rates = list(rates)
-    paid_by_month = defaultdict(Decimal)
+    paid_by_month = defaultdict(lambda: ZERO)
     for month, amount in payments:
         paid_by_month[month] += amount
 
