@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}{{ tenant.tenant_name }}{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <div>
+        <h1>{{ tenant.tenant_name }}</h1>
+        <p class="muted">{{ tenant.rental_unit_occupied }}</p>
+    </div>
+    <div class="inline-actions">
+        {% if not tenant.date_tenancy_ends %}
+        <a class="button button-primary" href="{% url 'propertymanagement:collect_rent' tenant.pk %}">Record rent</a>
+        {% endif %}
+        <a class="button" href="{% url 'propertymanagement:tenant_edit' tenant.pk %}">Edit details</a>
+        {% if not tenant.date_tenancy_ends %}
+        <a class="button button-danger" href="{% url 'propertymanagement:tenant_end' tenant.pk %}">End tenancy</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="split-layout">
+    <section class="card">
+        <p class="balance">Outstanding balance <strong class="{% if total_balance %}owing{% endif %}">Ksh {{ total_balance }}</strong></p>
+        <dl class="details">
+            <div><dt>Phone</dt><dd>{{ tenant.phone|default:"–" }}</dd></div>
+            <div><dt>National ID</dt><dd>{{ tenant.national_id_number|default:"–" }}</dd></div>
+            <div><dt>Tenancy</dt><dd>{{ tenant.date_tenancy_starts }} – {{ tenant.date_tenancy_ends|default:"present" }}</dd></div>
+            <div><dt>Emergency contact</dt><dd>
+                {% if tenant.emergency_contact_name %}{{ tenant.emergency_contact_name }}{% if tenant.emergency_contact_relationship %} ({{ tenant.emergency_contact_relationship }}){% endif %} · {{ tenant.emergency_contact_phone|default:"no phone" }}{% else %}–{% endif %}
+            </dd></div>
+        </dl>
+    </section>
+
+    <section class="card table-card">
+        <h2>Monthly rent</h2>
+        <table>
+            <thead>
+                <tr><th>Month</th><th class="numeric">Due</th><th class="numeric">Paid</th><th class="numeric">Balance</th></tr>
+            </thead>
+            <tbody>
+                {% for line in statement %}
+                <tr>
+                    <td>{{ line.month|date:"F Y" }}</td>
+                    <td class="numeric">{{ line.rent_due }}</td>
+                    <td class="numeric">{{ line.paid }}</td>
+                    <td class="numeric {% if line.balance %}owing{% endif %}">{{ line.balance }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" class="empty">No rent is due yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</div>
+
+<section class="card table-card">
+    <h2>Payments</h2>
+    <table>
+        <thead>
+            <tr><th>Date paid</th><th>For</th><th class="numeric">Amount (Ksh)</th><th>Details</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for payment in tenant.payments.all %}
+            <tr>
+                <td>{{ payment.date_paid }}</td>
+                <td>{{ payment.period|date:"F Y" }}</td>
+                <td class="numeric">{{ payment.amount_paid }}</td>
+                <td>{{ payment.payment_details }}</td>
+                <td class="inline-actions"><a href="{% url 'propertymanagement:payment_edit' payment.pk %}">Edit</a></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" class="empty">No payments recorded.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endblock %}

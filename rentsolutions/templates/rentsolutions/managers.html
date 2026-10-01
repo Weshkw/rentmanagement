@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Managers{% endblock %}
+
+{% block content %}
+<h1>Property managers</h1>
+
+<div class="split-layout">
+    <section class="card table-card">
+        <table>
+            <thead>
+                <tr><th>Manager</th><th>Property</th><th>Since</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for manager in managers %}
+                <tr>
+                    <td>{{ manager.user.full_name }}<br><span class="muted">{{ manager.user.phone_number }}</span></td>
+                    <td>{{ manager.property_managed.name }}</td>
+                    <td>{{ manager.management_start_date }}</td>
+                    <td>
+                        <form method="post" action="{% url 'manager_end' manager.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="link-button danger">End employment</button>
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" class="empty">You have not employed any managers.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section class="card">
+        <h2>Employ a manager</h2>
+        <form method="post" class="stacked-form">
+            {% csrf_token %}
+            {{ form.as_div }}
+            <button type="submit" class="button button-primary button-block">Employ manager</button>
+        </form>
+    </section>
+</div>
+{% endblock %}

@@ -1,360 +1,253 @@
-from django.db import models
-from django.contrib.auth.models import AbstractUser, BaseUserManager, Group, Permission
-from django.db.models import Sum
-from django.core.exceptions import ValidationError
+from datetime import date
 from decimal import Decimal
-import logging
-from datetime import timedelta
-import calendar
-from dateutil.relativedelta import relativedelta
-from datetime import datetime
-from django.db.models import Sum, Q
-from django.db.models.signals import post_delete
-from django.dispatch import receiver
+
+from django.contrib.auth.models import AbstractUser, BaseUserManager
+from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
+from django.db import models
+from django.db.models import Q
 from django.utils import timezone
+
+from .billing import monthly_rent, rate_start_for
 
 
 class CustomUserManager(BaseUserManager):
+    use_in_migrations = True
+
     def create_user(self, phone_number, password=None, **extra_fields):
         if not phone_number:
-            raise ValueError('The Phone Number field must be set')
+            raise ValueError("A phone number is required.")
         user = self.model(phone_number=phone_number, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user
 
     def create_superuser(self, phone_number, password=None, **extra_fields):
-        extra_fields.setdefault('is_staff', True)
-        extra_fields.setdefault('is_superuser', True)
-
+        extra_fields.setdefault("is_staff", True)
+        extra_fields.setdefault("is_superuser", True)
         return self.create_user(phone_number, password, **extra_fields)
 
 
 class CustomUser(AbstractUser):
+    """A landlord, property manager or administrator who signs in with their phone number."""
+
+    username = None
+    first_name = None
+    last_name = None
     phone_number = models.CharField(max_length=15, unique=True)
     full_name = models.CharField(max_length=255)
-    address = models.TextField(blank=True, null=True)
+    address = models.TextField(blank=True)
     date_registered = models.DateField(auto_now_add=True)
     date_updated = models.DateTimeField(auto_now=True)
+
     objects = CustomUserManager()
-    groups = models.ManyToManyField(Group, related_name='custom_user_set', blank=True)
-    user_permissions = models.ManyToManyField(
-        Permission, related_name='custom_user_set', blank=True
-    )
 
-    USERNAME_FIELD = 'phone_number'
-    REQUIRED_FIELDS = ['full_name']
-
-    def save(self, *args, **kwargs):
-        if not self.password.startswith(('pbkdf2_sha256$', 'bcrypt', 'argon2')):
-            self.set_password(self.password)
-
-        super().save(*args, **kwargs)
+    USERNAME_FIELD = "phone_number"
+    REQUIRED_FIELDS = ["full_name"]
 
     def __str__(self):
         return self.full_name
-    
 
+    def get_full_name(self):
+        return self.full_name
+
+    def get_short_name(self):
+        return self.full_name.split(" ")[0]
 
 
 class Landlord(models.Model):
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='landlords')
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name="landlord")
 
     def __str__(self):
         return self.user.full_name
-    
-
-
 
 
 class RentalProperty(models.Model):
     name = models.CharField(max_length=255)
-    landlord = models.ForeignKey('Landlord', on_delete=models.CASCADE, related_name='properties')
-    location = models.TextField()
-    total_units = models.PositiveIntegerField(default=0)
-    amenities = models.TextField(blank=True, null=True)
+    landlord = models.ForeignKey(Landlord, on_delete=models.CASCADE, related_name="properties")
+    location = models.CharField(max_length=255)
+    amenities = models.TextField(blank=True)
     date_registered = models.DateField(auto_now_add=True)
     date_updated = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        ordering = ["name"]
+        verbose_name_plural = "rental properties"
+
     def __str__(self):
         return self.name
-    
 
 
+class ActiveManagerQuerySet(models.QuerySet):
+    def active(self, on=None):
+        on = on or timezone.localdate()
+        return self.filter(management_start_date__lte=on).filter(
+            Q(management_end_date__isnull=True) | Q(management_end_date__gt=on)
+        )
 
-    
 
 class RentalPropertyManager(models.Model):
-    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='rental_property_managers')
-    property_managed = models.ForeignKey(RentalProperty, on_delete=models.CASCADE, related_name='propertys_managed')
-    national_id_number= models.CharField(max_length=255)
-    management_start_date= models.DateField()
-    management_end_date=models.DateField(blank=True, null=True)
+    """A person employed by a landlord to run one property day to day."""
+
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="management_roles")
+    property_managed = models.ForeignKey(
+        RentalProperty, on_delete=models.CASCADE, related_name="managers"
+    )
+    national_id_number = models.CharField(max_length=50)
+    management_start_date = models.DateField()
+    management_end_date = models.DateField(
+        null=True, blank=True, help_text="Access stops on this date."
+    )
+
+    objects = ActiveManagerQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-management_start_date"]
 
     def __str__(self):
-        return f'{self.user.full_name} manages {self.property_managed.name}'
+        return f"{self.user.full_name} manages {self.property_managed.name}"
 
 
 class RentalUnit(models.Model):
-    property_with_rental_unit = models.ForeignKey(RentalProperty, on_delete=models.CASCADE)
-    unit_identity = models.CharField(max_length=255)
-    current_monthly_rent_rate = models.ForeignKey('RentalUnitMonthlyRentRate', on_delete=models.PROTECT,
-                                                  related_name='monthly_rent')
-    occupied = models.BooleanField(default=False)
-    unit_notes= models.TextField(blank=True, null=True)
+    property_with_rental_unit = models.ForeignKey(
+        RentalProperty, on_delete=models.CASCADE, related_name="units"
+    )
+    unit_identity = models.CharField("unit", max_length=50)
+    unit_notes = models.TextField("notes", blank=True)
 
-    def save(self, *args, **kwargs):
-        created = self.pk is None
-        super().save(*args, **kwargs)  # Save the RentalUnit first
-        self.update_total_units()
-        if created and self.current_monthly_rent_rate:
-            self.current_monthly_rent_rate.rental_unit = self.unit_identity
-            self.current_monthly_rent_rate.unit_absolute_identity = self.id
-            self.current_monthly_rent_rate.save() 
-
-
-    def update_total_units(self):
-        rental_property = self.property_with_rental_unit
-        rental_property.total_units = rental_property.rentalunit_set.count()
-        rental_property.save()
+    class Meta:
+        ordering = ["unit_identity"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["property_with_rental_unit", "unit_identity"],
+                name="unique_unit_name_per_property",
+            ),
+        ]
 
     def __str__(self):
-        return f'{self.unit_identity} in {self.property_with_rental_unit.name}'
-    
+        return f"{self.unit_identity} in {self.property_with_rental_unit.name}"
 
-logger = logging.getLogger(__name__)
-
-@receiver(post_delete, sender=RentalUnit)
-def update_rental_property_total_units(sender, instance, **kwargs):
-    rental_property = instance.property_with_rental_unit
-    rental_property.total_units = rental_property.rentalunit_set.count()
-    rental_property.save()
-
-
-class Tenant(models.Model):
-    rental_unit_occupied = models.ForeignKey(RentalUnit, on_delete=models.CASCADE, related_name='rental_units',
-                                              verbose_name="Rental unit assigned")
-    date_tenancy_starts = models.DateField()
-    date_tenancy_ends = models.DateField(blank=True, null=True)
-    tenant_name = models.CharField(max_length=255)
-    national_id_number = models.CharField(max_length=255, blank=True, null=True)
-    phone = models.CharField(max_length=15, blank=True, null=True)
-    emergency_contact_name = models.CharField(max_length=15, blank=True, null=True)
-    emergency_contact_phone = models.CharField(max_length=15, blank=True, null=True)
-    emergency_contact_relationship = models.CharField(max_length=15, blank=True, null=True)
-
+    def rent_rate_on(self, day):
+        """The monthly rent in force on ``day``, read from prefetched rates when available."""
+        rates = [rate for rate in self.rent_rates.all() if rate.start_date <= day]
+        return max(rates, key=lambda rate: rate.start_date) if rates else None
 
     @property
-    def Tenant_Monthly_Rental_balances(self):
-        balances = {}
-        today = timezone.now().date()
+    def current_rent_rate(self):
+        return self.rent_rate_on(timezone.localdate())
 
-        # Get the applicable rent rates for the tenant's rental unit
-        applicable_rent_rates = RentalUnitMonthlyRentRate.objects.filter(
-            unit_absolute_identity=self.rental_unit_occupied.id
-        ).order_by('start_date')
+    def tenant_on(self, day):
+        """The tenant living in the unit on ``day``, read from prefetched tenants when available."""
+        return next((tenant for tenant in self.tenants.all() if tenant.is_resident_on(day)), None)
 
-        # Determine the start and end dates for rent calculation
-        start_date = self.date_tenancy_starts
-        end_date = self.date_tenancy_ends or today
+    @property
+    def current_tenant(self):
+        return self.tenant_on(timezone.localdate())
 
-        # Calculate the prorated rent for the first month
-        first_month = start_date.month
-        first_year = start_date.year
-        _, days_in_first_month = calendar.monthrange(first_year, first_month)
-        occupied_days_first_month = days_in_first_month - start_date.day + 1
-
-        rent_rate_first_month = applicable_rent_rates.filter(
-            start_date__lte=datetime(first_year, first_month, 1)
-        ).order_by('-start_date').first()
-
-        if rent_rate_first_month:
-            prorated_rent_first_month = rent_rate_first_month.rent_rate * occupied_days_first_month / days_in_first_month
-
-            # Calculate the intended payments for the first month
-            total_payments_first_month = RentPayment.objects.filter(
-                tenant_paying=self,
-                intended_payment_month=str(first_month).zfill(2),
-                intended_payment_year=str(first_year)
-            ).aggregate(total_amount=Sum('amount_paid'))['total_amount'] or 0
-
-            # Calculate the rent balance for the first month
-            rent_balance_first_month = prorated_rent_first_month - total_payments_first_month
-
-            # Round the rent balance to two decimal places
-            balances[f"{first_year}-{str(first_month).zfill(2)}"] = round(max(Decimal(0), rent_balance_first_month), 2)
-
-        # Iterate over the remaining full months
-        current_date = start_date + relativedelta(months=1)
-        while current_date < end_date:
-            month = current_date.month
-            year = current_date.year
-
-            # Calculate the intended payments for this month
-            total_payments = RentPayment.objects.filter(
-                tenant_paying=self,
-                intended_payment_month=str(month).zfill(2),
-                intended_payment_year=str(year)
-            ).aggregate(total_amount=Sum('amount_paid'))['total_amount'] or 0
-
-            # Get the applicable rent rate for the current month
-            rent_rate = applicable_rent_rates.filter(
-                start_date__lte=datetime(year, month, 1)
-            ).order_by('-start_date').first()
-
-            if rent_rate:
-                # Calculate the full month's rent
-                full_month_rent = rent_rate.rent_rate
-
-                # Calculate the rent balance for this month
-                rent_balance = full_month_rent - total_payments
-
-                # Round the rent balance to two decimal places
-                balances[f"{year}-{str(month).zfill(2)}"] = round(max(Decimal(0), rent_balance), 2)
-
-            # Move to the next month
-            current_date += relativedelta(months=1)
-
-        # Calculate the rent balance for the last month
-        if end_date != today:
-            last_month = end_date.month
-            last_year = end_date.year
-
-            rent_rate_last_month = applicable_rent_rates.filter(
-                start_date__lte=datetime(last_year, last_month, 1)
-            ).order_by('-start_date').first()
-
-            if rent_rate_last_month:
-                # Calculate the full month's rent
-                full_month_rent = rent_rate_last_month.rent_rate
-
-                # Calculate the intended payments for the last month
-                total_payments_last_month = RentPayment.objects.filter(
-                    tenant_paying=self,
-                    intended_payment_month=str(last_month).zfill(2),
-                    intended_payment_year=str(last_year)
-                ).aggregate(total_amount=Sum('amount_paid'))['total_amount'] or 0
-
-                # Calculate the rent balance for the last month
-                rent_balance_last_month = full_month_rent - total_payments_last_month
-
-                # Round the rent balance to two decimal places
-                balances[f"{last_year}-{str(last_month).zfill(2)}"] = round(max(Decimal(0), rent_balance_last_month), 2)
-
-        # Calculate the rent balance for the current month
-        if end_date == today:
-            current_month = today.month
-            current_year = today.year
-
-            rent_rate_current_month = applicable_rent_rates.filter(
-                start_date__lte=datetime(current_year, current_month, 1)
-            ).order_by('-start_date').first()
-
-            if rent_rate_current_month:
-                # Calculate the full month's rent
-                full_month_rent = rent_rate_current_month.rent_rate
-
-                # Calculate the intended payments for the current month
-                total_payments_current_month = RentPayment.objects.filter(
-                    tenant_paying=self,
-                    intended_payment_month=str(current_month).zfill(2),
-                    intended_payment_year=str(current_year)
-                ).aggregate(total_amount=Sum('amount_paid'))['total_amount'] or 0
-
-                # Calculate the rent balance for the current month
-                rent_balance_current_month = full_month_rent - total_payments_current_month
-
-                # Round the rent balance to two decimal places
-                balances[f"{current_year}-{str(current_month).zfill(2)}"] = round(max(Decimal(0), rent_balance_current_month), 2)
-
-        return balances
-        
-   
-    def save(self, *args, **kwargs):
-        if self.pk is None:  # Only when the instance is newly created
-            self.rental_unit_occupied.occupied = True
-            self.rental_unit_occupied.save(update_fields=['occupied'])
-        super().save(*args, **kwargs)
-
-    
-
-    def __str__(self):
-        if self.tenant_name:
-            return f'{self.tenant_name}, rental_unit:{self.rental_unit_occupied.unit_identity}'
-        else:
-            return f'Tenant {self.pk}, rental_unit:{self.rental_unit_occupied.unit_identity}'
-        
-
-@receiver(post_delete, sender=Tenant)
-def set_rental_unit_unoccupied(sender, instance, **kwargs):
-    rental_unit = instance.rental_unit_occupied
-    rental_unit.occupied = False
-    rental_unit.save(update_fields=['occupied'])
+    @property
+    def occupied(self):
+        return self.current_tenant is not None
 
 
 class RentalUnitMonthlyRentRate(models.Model):
-    rent_rate = models.DecimalField(max_digits=10, decimal_places=2)
-    start_date = models.DateField()
-    end_date = models.DateField(null=True, blank=True)
-    rental_unit = models.CharField(max_length=255, blank=True)
-    unit_absolute_identity = models.IntegerField(null=True, blank=True)
+    """The monthly rent of a unit from ``start_date`` until the next rate starts."""
+
+    rental_unit = models.ForeignKey(RentalUnit, on_delete=models.CASCADE, related_name="rent_rates")
+    rent_rate = models.DecimalField(
+        max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal(0))]
+    )
+    start_date = models.DateField(
+        help_text="Rates start on the first of a month; a mid-month date starts next month."
+    )
+
+    class Meta:
+        ordering = ["start_date"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["rental_unit", "start_date"], name="one_rent_rate_per_unit_per_month"
+            ),
+        ]
 
     def __str__(self):
-        return f"Rent rate: {self.rent_rate} - Start Date: {self.start_date}"
+        return f"{self.rent_rate} from {self.start_date:%B %Y}"
 
     def save(self, *args, **kwargs):
-        if self.start_date:
-            if self.start_date.day != 1:
-                _, last_day_of_month = calendar.monthrange(self.start_date.year, self.start_date.month)
-                next_month = self.start_date.replace(day=1) + timedelta(days=last_day_of_month)
-                self.start_date = next_month.replace(day=1)
-
-        previous_rate = RentalUnitMonthlyRentRate.objects.filter(
-            rental_unit=self.rental_unit,
-            unit_absolute_identity=self.unit_absolute_identity
-        ).order_by('-start_date').first()
-
-        if previous_rate and self.start_date < previous_rate.start_date:
-            raise ValidationError("Start date cannot be earlier than the start date of the previous rate.")
-
-        if previous_rate:
-            previous_rate_end_date = self.start_date - timedelta(days=1)
-            RentalUnitMonthlyRentRate.objects.filter(pk=previous_rate.pk).update(end_date=previous_rate_end_date)
-
+        self.start_date = rate_start_for(self.start_date)
         super().save(*args, **kwargs)
+
+
+class Tenant(models.Model):
+    rental_unit_occupied = models.ForeignKey(
+        RentalUnit, on_delete=models.CASCADE, related_name="tenants", verbose_name="rental unit"
+    )
+    tenant_name = models.CharField("name", max_length=255)
+    national_id_number = models.CharField(max_length=50, blank=True)
+    phone = models.CharField(max_length=15, blank=True)
+    emergency_contact_name = models.CharField(max_length=255, blank=True)
+    emergency_contact_phone = models.CharField(max_length=15, blank=True)
+    emergency_contact_relationship = models.CharField(max_length=50, blank=True)
+    date_tenancy_starts = models.DateField("tenancy starts")
+    date_tenancy_ends = models.DateField("tenancy ends", null=True, blank=True)
+
+    class Meta:
+        ordering = ["-date_tenancy_starts"]
+
+    def __str__(self):
+        return f"{self.tenant_name} ({self.rental_unit_occupied.unit_identity})"
+
+    def clean(self):
+        ends = self.date_tenancy_ends
+        if ends and self.date_tenancy_starts and ends < self.date_tenancy_starts:
+            raise ValidationError({"date_tenancy_ends": "A tenancy cannot end before it starts."})
+
+    def is_resident_on(self, day):
+        ends = self.date_tenancy_ends
+        return self.date_tenancy_starts <= day and (ends is None or ends >= day)
+
+    def rent_statement(self, today=None):
+        """Month-by-month rent for this tenancy, using prefetched rates and payments when loaded."""
+        return monthly_rent(
+            tenancy_starts=self.date_tenancy_starts,
+            tenancy_ends=self.date_tenancy_ends,
+            rates=[
+                (rate.start_date, rate.rent_rate)
+                for rate in self.rental_unit_occupied.rent_rates.all()
+            ],
+            payments=[(payment.period, payment.amount_paid) for payment in self.payments.all()],
+            today=today or timezone.localdate(),
+        )
+
+    def balance_for(self, month, today=None):
+        statement = self.rent_statement(today)
+        return next((line.balance for line in statement if line.month == month), Decimal(0))
+
+    @property
+    def total_balance(self):
+        return sum((line.balance for line in self.rent_statement()), Decimal(0))
 
 
 class RentPayment(models.Model):
-    tenant_paying = models.ForeignKey(Tenant, on_delete=models.SET_NULL, null=True, related_name='tenant_payments')
-    rental_unit_paid_for = models.CharField(max_length=255, blank=True)
-    amount_paid = models.DecimalField(max_digits=10, decimal_places=2)
+    MONTH_CHOICES = [(month, date(2000, month, 1).strftime("%B")) for month in range(1, 13)]
+
+    tenant_paying = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="payments")
+    amount_paid = models.DecimalField(
+        max_digits=10, decimal_places=2, validators=[MinValueValidator(Decimal("0.01"))]
+    )
     date_paid = models.DateField()
-    INTENDED_PAYMENT_MONTH_CHOICES = [
-        ('01', 'January'), ('02', 'February'), ('03', 'March'), ('04', 'April'),
-        ('05', 'May'), ('06', 'June'), ('07', 'July'), ('08', 'August'),
-        ('09', 'September'), ('10', 'October'), ('11', 'November'), ('12', 'December'),
-    ]
-    INTENDED_PAYMENT_YEAR_CHOICES = [(str(year), str(year)) for year in range(2020, 2050)]
-
-    intended_payment_month = models.CharField(
-        max_length=2,
-        choices=INTENDED_PAYMENT_MONTH_CHOICES,
-        help_text="Select the intended payment month",
+    intended_payment_month = models.PositiveSmallIntegerField(
+        "paying for month", choices=MONTH_CHOICES
     )
-
-    intended_payment_year = models.CharField(
-        max_length=4,
-        choices=INTENDED_PAYMENT_YEAR_CHOICES,
-        help_text="Select the intended payment year",
-    )
-    payment_details = models.TextField(blank=True, null=True)
+    intended_payment_year = models.PositiveSmallIntegerField("paying for year")
+    payment_details = models.TextField(blank=True)
     date_recorded = models.DateField(auto_now_add=True)
 
-    def save(self, *args, **kwargs):
-        if self.tenant_paying:
-            self.rental_unit_paid_for = self.tenant_paying.rental_unit_occupied.unit_identity
-        super().save(*args, **kwargs)
-
+    class Meta:
+        ordering = ["-date_paid", "-pk"]
 
     def __str__(self):
-        return f"Payment - {self.date_paid} unit- {self.rental_unit_paid_for}" 
+        return f"{self.amount_paid} from {self.tenant_paying.tenant_name} on {self.date_paid}"
+
+    @property
+    def period(self):
+        """The first day of the month this payment is for."""
+        return date(self.intended_payment_year, self.intended_payment_month, 1)

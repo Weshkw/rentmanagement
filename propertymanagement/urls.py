@@ -1,17 +1,16 @@
 from django.urls import path
-from .views import management_home, collect_rent,payment_history,edit_payment,add_tenant,tenant_details,rentaunit_details,edit_tenant,delete_tenant,update_unit_notes
 
-app_name = 'propertymanagement'
+from . import views
+
+app_name = "propertymanagement"
 
 urlpatterns = [
-    path('management_home/', management_home, name='management_home'),
-    path('collect_rent/<int:pk>/', collect_rent, name='collect_rent'),
-    path('payment_history/<int:tenant_id>/', payment_history, name='payment_history'),
-    path('edit_payment/<int:payment_id>/', edit_payment, name='edit_payment'),
-    path('add_tenant/<int:unit_id>/',add_tenant, name='add_tenant'),
-    path('tenant_details/<int:pk>/',tenant_details, name='tenant_details'),
-    path('propertymanagement/edit_tenant/<int:tenant_id>/', edit_tenant, name='edit_tenant'),
-    path('propertymanagement/delete_tenant/<int:tenant_id>/', delete_tenant, name='delete_tenant'),
-    path('unit/<int:pk>/', rentaunit_details, name='unit_details'),
-    path('update-unit-notes/', update_unit_notes, name='update_unit_notes'),
+    path("", views.management_home, name="management_home"),
+    path("units/<int:pk>/", views.unit_detail, name="unit_detail"),
+    path("units/<int:unit_pk>/tenants/new/", views.tenant_create, name="tenant_create"),
+    path("tenants/<int:pk>/", views.tenant_detail, name="tenant_detail"),
+    path("tenants/<int:pk>/edit/", views.tenant_edit, name="tenant_edit"),
+    path("tenants/<int:pk>/end/", views.tenant_end, name="tenant_end"),
+    path("tenants/<int:tenant_pk>/payments/new/", views.collect_rent, name="collect_rent"),
+    path("payments/<int:pk>/edit/", views.payment_edit, name="payment_edit"),
 ]

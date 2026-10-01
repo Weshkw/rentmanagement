@@ -1,15 +1,32 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Upload Payment Receipt</title>
-    
-</head>
-<body>
-    <div>
-        {% include "navbar.html" %}
+{% extends "base.html" %}
+
+{% block title %}Rent management for landlords{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <h1>Rent management made simple</h1>
+    <p>Track every property, unit, tenant and payment in one place. Landlords stay informed
+       while their managers keep things running.</p>
+    <div class="hero-actions">
+        <a class="button button-primary" href="{% url 'register_landlord' %}">Register as a landlord</a>
+        <a class="button" href="{% url 'login' %}">Log in</a>
     </div>
-    <h1>welcome home</h1>
-</body>
-</html>
+</section>
+
+<section class="feature-grid">
+    <article class="card">
+        <h2>For landlords</h2>
+        <p>Add properties and units, set rent and its history, employ managers, and see each
+           month's takings and arrears at a glance.</p>
+    </article>
+    <article class="card">
+        <h2>For managers</h2>
+        <p>Move tenants in and out, record rent as it is paid, and keep notes on every unit.</p>
+    </article>
+    <article class="card">
+        <h2>Accurate balances</h2>
+        <p>Balances follow the rent in force each month, prorate the first month, and credit
+           every payment to the month it was for.</p>
+    </article>
+</section>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block title %}No properties yet{% endblock %}
+
+{% block content %}
+<section class="card form-card">
+    <h1>No properties yet</h1>
+    <p>Your account is not linked to any property. If a landlord has employed you, ask them to
+       check the start date of your management; otherwise you can
+       <a href="{% url 'register_landlord' %}">register as a landlord</a> with a different phone number.</p>
+</section>
+{% endblock %}

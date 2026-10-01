@@ -1,259 +1,154 @@
-from django.shortcuts import render
-from django.shortcuts import render, redirect,get_object_or_404
-from django.contrib.auth import authenticate, login, logout 
-from django.core.exceptions import ValidationError
 from django.contrib import messages
-import calendar
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
-from decimal import Decimal
-from django.db.models import Sum
-from django.utils import timezone
-from django.db import transaction
-from datetime import timedelta
-from django.http import JsonResponse
-from datetime import datetime
-from django.contrib.auth.decorators import login_required,user_passes_test
-from rentsolutions.models import CustomUser, Landlord, RentalProperty, RentalUnit, Tenant, RentalUnitMonthlyRentRate, RentPayment,RentalPropertyManager
-from rentsolutions.views import is_landlord,is_rental_property_manager
+from django.shortcuts import get_object_or_404, redirect, render
+
+from rentsolutions.access import (
+    operated_payments,
+    operated_properties,
+    operated_tenants,
+    operated_units,
+    operator_required,
+)
+from rentsolutions.reports import with_units_and_tenancies
+from rentsolutions.views import render_form
+
+from .forms import EndTenancyForm, RentPaymentForm, TenantForm, UnitNotesForm
 
 
-@login_required(login_url='login')
-@user_passes_test(is_rental_property_manager)
+@operator_required
 def management_home(request):
-    # Get all rental property managers associated with the current user
-    managers = RentalPropertyManager.objects.filter(user=request.user)
-    
-    # Retrieve all rental properties managed by the current manager(s)
-    rental_properties = RentalProperty.objects.filter(propertys_managed__in=managers)
+    properties = with_units_and_tenancies(operated_properties(request.user))
+    return render(request, "propertymanagement/management_home.html", {"properties": properties})
 
-    # Retrieve all occupied units managed by the current manager(s)
-    rental_units = RentalUnit.objects.filter(property_with_rental_unit__in=rental_properties)
 
-    success_message = request.session.pop('success_message', None)
+@operator_required
+def unit_detail(request, pk):
+    unit = get_object_or_404(
+        operated_units(request.user)
+        .select_related("property_with_rental_unit")
+        .prefetch_related("rent_rates", "tenants"),
+        pk=pk,
+    )
+    form = UnitNotesForm(request.POST or None, instance=unit)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Notes saved.")
+        return redirect("propertymanagement:unit_detail", pk=unit.pk)
+    return render(request, "propertymanagement/unit_detail.html", {"unit": unit, "form": form})
 
+
+@operator_required
+def tenant_create(request, unit_pk):
+    unit = get_object_or_404(operated_units(request.user), pk=unit_pk)
+    form = TenantForm(request.POST or None, rental_unit=unit)
+    if request.method == "POST" and form.is_valid():
+        tenant = form.save()
+        messages.success(request, f"{tenant.tenant_name} moved into {unit.unit_identity}.")
+        return redirect("propertymanagement:tenant_detail", pk=tenant.pk)
+    return render_form(
+        request,
+        form,
+        title=f"Add a tenant to {unit}",
+        submit_label="Add tenant",
+        cancel_url="propertymanagement:management_home",
+    )
+
+
+def tenant_with_history(user):
+    return (
+        operated_tenants(user)
+        .select_related("rental_unit_occupied__property_with_rental_unit")
+        .prefetch_related("rental_unit_occupied__rent_rates", "payments")
+    )
+
+
+@operator_required
+def tenant_detail(request, pk):
+    tenant = get_object_or_404(tenant_with_history(request.user), pk=pk)
+    statement = tenant.rent_statement()
     context = {
-        'success_message': success_message,
-        'rental_properties': rental_properties,
-        'rental_units': rental_units,
-        'is_rental_property_manager': True,
-        'managers': managers
+        "tenant": tenant,
+        "statement": reversed(statement),
+        "total_balance": sum(line.balance for line in statement),
     }
-    return render(request, 'propertymanagement/management_home.html', context)
+    return render(request, "propertymanagement/tenant_detail.html", context)
 
 
-
-@login_required(login_url='login')
-@user_passes_test(is_rental_property_manager)
-def collect_rent(request, pk):
-    rental_unit = get_object_or_404(RentalUnit, pk=pk)
-    tenant = rental_unit.rental_units.first()
-    rental_property = rental_unit.property_with_rental_unit  # Retrieve the rental property
-
-    if request.method == 'POST':
-        amount_paid = Decimal(request.POST.get('amount_paid'))
-        date_paid = request.POST.get('date_paid')
-        intended_payment_month = request.POST.get('intended_payment_month')
-        intended_payment_year = request.POST.get('intended_payment_year')
-        payment_details = request.POST.get('payment_details')
-
-        if amount_paid and date_paid and intended_payment_month and intended_payment_year:
-            rent_payment = RentPayment(
-                tenant_paying=tenant,
-                amount_paid=amount_paid,
-                date_paid=date_paid,
-                intended_payment_month=intended_payment_month,
-                intended_payment_year=intended_payment_year,
-                payment_details=payment_details
-            )
-            rent_payment.save()
-            message = f'Rent payment of KSH {amount_paid} paid by {tenant} for rental unit {rental_unit} recorded successfully.'
-            request.session['success_message'] = message
-            return redirect('propertymanagement:management_home')
-            
-
-    payment_month_choices = RentPayment.INTENDED_PAYMENT_MONTH_CHOICES
-    payment_year_choices = [str(year) for year in range(datetime.now().year, datetime.now().year + 5)]
-
-    context = {
-        'tenant': tenant,
-        'rental_unit': rental_unit,
-        'rental_property': rental_property,
-        'payment_month_choices': payment_month_choices,
-        'payment_year_choices': payment_year_choices,
-        'is_rental_property_manager': True,
-    }
-    return render(request, 'propertymanagement/rent_collection.html', context)
+@operator_required
+def tenant_edit(request, pk):
+    tenant = get_object_or_404(operated_tenants(request.user), pk=pk)
+    form = TenantForm(
+        request.POST or None, instance=tenant, rental_unit=tenant.rental_unit_occupied
+    )
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Tenant details saved.")
+        return redirect("propertymanagement:tenant_detail", pk=tenant.pk)
+    return render_form(
+        request,
+        form,
+        title=f"Edit {tenant.tenant_name}",
+        submit_label="Save changes",
+        cancel_url="propertymanagement:management_home",
+    )
 
 
-@login_required(login_url='login')
-@user_passes_test(is_rental_property_manager)
-def payment_history(request, tenant_id):
-    tenant = get_object_or_404(Tenant, id=tenant_id)
-    payments = RentPayment.objects.filter(tenant_paying=tenant).order_by('-date_paid')
-    context = {
-        'tenant': tenant,
-        'payments': payments,
-        'is_rental_property_manager': True,
-    }
-    return render(request, 'propertymanagement/payment_history.html', context)
+@operator_required
+def tenant_end(request, pk):
+    tenant = get_object_or_404(operated_tenants(request.user).filter(date_tenancy_ends=None), pk=pk)
+    form = EndTenancyForm(request.POST or None, instance=tenant)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, f"{tenant.tenant_name}'s tenancy has ended.")
+        return redirect("propertymanagement:management_home")
+    return render_form(
+        request,
+        form,
+        title=f"End {tenant.tenant_name}'s tenancy",
+        submit_label="End tenancy",
+        cancel_url="propertymanagement:management_home",
+        intro="The tenant and their payment history are kept; the unit becomes vacant "
+        "after the last day.",
+    )
 
 
-@login_required(login_url='login')
-@user_passes_test(is_rental_property_manager)
-def edit_payment(request, payment_id):
-    payment = get_object_or_404(RentPayment, id=payment_id)
-    tenant_id = payment.tenant_paying.id  # Get the tenant_id from the payment instance
-
-    if request.method == 'POST':
-        amount_paid = Decimal(request.POST.get('amount_paid'))
-        intended_payment_month = request.POST.get('intended_payment_month')
-        intended_payment_year = request.POST.get('intended_payment_year')
-        payment_details = request.POST.get('payment_details')
-
-        # Update the payment instance with the new values
-        payment.amount_paid = amount_paid
-        payment.intended_payment_month = intended_payment_month
-        payment.intended_payment_year = intended_payment_year
-        payment.payment_details = payment_details
-        payment.save()
-
-        # Redirect to the payment_history view with the tenant_id
-        return redirect('propertymanagement:payment_history', tenant_id=tenant_id)
-
-    context = {
-        'message': 'Payment updated successfully.',
-        'payment': payment,
-        'is_rental_property_manager': True,
-    }
-    return render(request, 'propertymanagement/edit_payment.html', context)
-
-@login_required(login_url='login')
-@user_passes_test(is_rental_property_manager)
-def add_tenant(request, unit_id):
-    rental_unit = get_object_or_404(RentalUnit, pk=unit_id)
-
-    if request.method == 'POST':
-        tenant_name = request.POST.get('tenant_name')
-        national_id_number = request.POST.get('national_id_number')
-        phone = request.POST.get('phone')
-        date_tenancy_starts = request.POST.get('date_tenancy_starts')
-        date_tenancy_ends = request.POST.get('date_tenancy_ends')
-        emergency_contact_name = request.POST.get('emergency_contact_name')
-        emergency_contact_phone = request.POST.get('emergency_contact_phone')
-        emergency_contact_relationship = request.POST.get('emergency_contact_relationship')
-
-        if tenant_name and date_tenancy_starts:
-            tenant = Tenant(
-                rental_unit_occupied=rental_unit,
-                tenant_name=tenant_name,
-                national_id_number=national_id_number,
-                phone=phone,
-                date_tenancy_starts=date_tenancy_starts,
-                date_tenancy_ends=date_tenancy_ends,
-                emergency_contact_name=emergency_contact_name,
-                emergency_contact_phone=emergency_contact_phone,
-                emergency_contact_relationship=emergency_contact_relationship
-            )
-            tenant.save()
-            return redirect('propertymanagement:management_home')
-
-    context = {
-        'rental_unit': rental_unit,
-        'is_rental_property_manager': True,
-    }
-    return render(request, 'propertymanagement/add_tenant.html', context)
+@operator_required
+def collect_rent(request, tenant_pk):
+    tenant = get_object_or_404(
+        operated_tenants(request.user).select_related("rental_unit_occupied"), pk=tenant_pk
+    )
+    form = RentPaymentForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        form.instance.tenant_paying = tenant
+        payment = form.save()
+        messages.success(
+            request,
+            f"Recorded Ksh {payment.amount_paid} from {tenant.tenant_name} "
+            f"for {payment.period:%B %Y}.",
+        )
+        return redirect("propertymanagement:tenant_detail", pk=tenant.pk)
+    return render_form(
+        request,
+        form,
+        title=f"Record rent from {tenant.tenant_name}",
+        submit_label="Record payment",
+        cancel_url="propertymanagement:management_home",
+    )
 
 
-@login_required(login_url='login')
-@user_passes_test(is_rental_property_manager)
-def tenant_details(request, pk):
-    tenant = get_object_or_404(Tenant, pk=pk)
-    balances = tenant.Tenant_Monthly_Rental_balances
-    total_balance = sum(balances.values())
-    context = {
-        'tenant': tenant,
-        'total_balance': total_balance,
-        'is_rental_property_manager': True,
-    }
-    return render(request, 'propertymanagement/tenant.html', context)
-
-
-@login_required(login_url='login')
-@user_passes_test(is_rental_property_manager)
-def edit_tenant(request, tenant_id):
-    tenant = get_object_or_404(Tenant, pk=tenant_id)
-
-    if request.method == 'POST':
-        tenant_name = request.POST.get('tenant_name')
-        national_id_number = request.POST.get('national_id_number')
-        phone = request.POST.get('phone')
-        date_tenancy_starts = request.POST.get('date_tenancy_starts')
-        date_tenancy_ends = request.POST.get('date_tenancy_ends')
-        emergency_contact_name = request.POST.get('emergency_contact_name')
-        emergency_contact_phone = request.POST.get('emergency_contact_phone')
-        emergency_contact_relationship = request.POST.get('emergency_contact_relationship')
-
-        if tenant_name and date_tenancy_starts:
-            tenant.tenant_name = tenant_name
-            tenant.national_id_number = national_id_number
-            tenant.phone = phone
-            tenant.date_tenancy_starts = date_tenancy_starts
-            tenant.date_tenancy_ends = date_tenancy_ends
-            tenant.emergency_contact_name = emergency_contact_name
-            tenant.emergency_contact_phone = emergency_contact_phone
-            tenant.emergency_contact_relationship = emergency_contact_relationship
-            tenant.save()
-            return redirect('propertymanagement:management_home')
-
-    context = {
-        'tenant': tenant,
-        'is_rental_property_manager': True,
-    }
-    return render(request, 'propertymanagement/edit_tenant.html', context)
-
-
-@login_required(login_url='login')
-@user_passes_test(is_rental_property_manager)
-def delete_tenant(request, tenant_id):
-    tenant = get_object_or_404(Tenant, pk=tenant_id)
-
-    if request.method == 'POST':
-        tenant.delete()
-        return redirect('propertymanagement:management_home')
-
-    context = {
-        'tenant': tenant,
-        'is_rental_property_manager': True,
-    }
-    return render(request, 'propertymanagement/delete_tenant.html', context)
-
-
-@login_required(login_url='login')
-@user_passes_test(is_rental_property_manager)
-def rentaunit_details(request, pk):
-    rentalunit = get_object_or_404(RentalUnit, pk=pk)
-    context = {
-        'rentalunit': rentalunit,
-        'is_rental_property_manager': True,
-    }
-    return render(request, 'propertymanagement/rental_unit_details.html', context)
-
-
-@csrf_exempt
-@require_POST
-def update_unit_notes(request):
-    if request.method == 'POST':
-        unit_notes = request.POST.get('unit_notes')
-        rental_unit_id = request.POST.get('rental_unit_id')
-
-        try:
-            rental_unit = RentalUnit.objects.get(pk=rental_unit_id)
-            rental_unit.unit_notes = unit_notes
-            rental_unit.save(update_fields=['unit_notes'])
-            return JsonResponse({'success': True})
-        except RentalUnit.DoesNotExist:
-            return JsonResponse({'success': False, 'error': 'Rental unit not found'})
-    else:
-        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+@operator_required
+def payment_edit(request, pk):
+    payment = get_object_or_404(
+        operated_payments(request.user).select_related("tenant_paying"), pk=pk
+    )
+    form = RentPaymentForm(request.POST or None, instance=payment)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Payment updated.")
+        return redirect("propertymanagement:tenant_detail", pk=payment.tenant_paying.pk)
+    return render_form(
+        request,
+        form,
+        title=f"Edit payment from {payment.tenant_paying.tenant_name}",
+        submit_label="Save payment",
+        cancel_url="propertymanagement:management_home",
+    )

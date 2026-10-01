@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% comment %}
+Asks before a destructive action. Expects: title, message, confirm_label, cancel_url.
+{% endcomment %}
+
+{% block content %}
+<section class="card form-card">
+    <h1>{{ title }}</h1>
+    <p>{{ message }}</p>
+    <form method="post" class="form-actions">
+        {% csrf_token %}
+        <a class="button" href="{% url cancel_url %}">Cancel</a>
+        <button type="submit" class="button button-danger">{{ confirm_label }}</button>
+    </form>
+</section>
+{% endblock %}

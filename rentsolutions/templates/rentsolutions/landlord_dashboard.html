@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Overview{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <h1>Overview for {{ month|date:"F Y" }}</h1>
+    {% include "rentsolutions/_month_picker.html" %}
+</div>
+
+<section class="card-grid">
+    {% for summary in summaries %}
+    {% with rental_property=summary.rental_property %}
+    <article class="card">
+        <h2><a href="{% url 'property_units' rental_property.pk %}?month={{ month|date:'Y-m' }}">{{ rental_property.name }}</a></h2>
+        <p class="muted">{{ rental_property.location }}</p>
+        <p>
+            {{ summary.occupied_units }} of {{ summary.total_units }} unit{{ summary.total_units|pluralize }} occupied
+            · Managed by
+            {% for manager in rental_property.active_managers %}{{ manager.user.full_name }}{% if not forloop.last %}, {% endif %}{% empty %}you{% endfor %}
+        </p>
+        <dl class="stats">
+            <div><dt>Received in {{ month|date:"F" }}</dt><dd>Ksh {{ summary.paid_in_month }}</dd></div>
+            <div><dt>Paid for {{ month|date:"F" }}</dt><dd>Ksh {{ summary.paid_for_month }}</dd></div>
+            <div><dt>Outstanding for {{ month|date:"F" }}</dt><dd class="{% if summary.balance_for_month %}owing{% endif %}">Ksh {{ summary.balance_for_month }}</dd></div>
+        </dl>
+    </article>
+    {% endwith %}
+    {% empty %}
+    <p class="empty">You have no properties yet. <a href="{% url 'property_create' %}">Add one</a>.</p>
+    {% endfor %}
+</section>
+{% endblock %}

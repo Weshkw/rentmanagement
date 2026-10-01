@@ -1,90 +1,44 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ property.name }} Rental Units</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" integrity="sha512-*** REMOVED ***" crossorigin="anonymous" />
-</head>
-<body class="bg-gray-100">
+{% extends "base.html" %}
 
-    {% include "navbar.html" %}
+{% block title %}{{ rental_property.name }}{% endblock %}
 
-    <header class="bg-gray-800 text-white py-6">
-        <div class="container mx-auto text-center">
-            <h1 class="text-3xl font-bold">{{ property.name }} Rental Units</h1>
-        </div>
-    </header>
+{% block content %}
+<div class="toolbar">
+    <div>
+        <h1>{{ rental_property.name }}</h1>
+        <p class="muted">Rent paid for {{ month|date:"F Y" }}, unit by unit</p>
+    </div>
+    {% include "rentsolutions/_month_picker.html" %}
+</div>
 
-    <form class="container mx-auto mt-8 p-6 bg-white rounded-lg shadow-lg max-w-md">
-        <h2 class="text-2xl font-bold mb-4 text-center">Check Monthly Income of Each Unit</h2>
-        <div class="grid grid-cols-2 gap-4">
-            <div>
-                <label for="month" class="block font-semibold">Enter Month:</label>
-                <input type="number" id="month" name="month" min="1" max="12" value="{{ selected_month }}" class="form-input mt-1 block w-full rounded-md border-gray-300">
-            </div>
-            <div>
-                <label for="year" class="block font-semibold">Enter Year:</label>
-                <input type="number" id="year" name="year" min="2020" max="2050" value="{{ selected_year }}" class="form-input mt-1 block w-full rounded-md border-gray-300">
-            </div>
-        </div>
-        <button type="submit" class="mt-6 w-full bg-gray-800 text-white font-semibold py-2 rounded-md hover:bg-gray-700 transition duration-300">View</button>
-    </form>
-
-    <main class="container mx-auto mt-8">
-        <div class="overflow-x-auto">
-            <table class="table-auto w-full bg-white shadow-md rounded-lg">
-                <thead class="bg-gray-800 text-white">
-                    <tr>
-                        <th class="px-4 py-2">Unit Identity</th>
-                        <th class="px-4 py-2">Tenant Name</th>
-                        <th class="px-4 py-2">Current Monthly Rent Rate</th>
-                        <th class="px-4 py-2">Occupied</th>
-                        <th class="px-4 py-2">Rent paid {{ selected_month }} {{ selected_year }}</th>
-                        <th class="px-4 py-2">Actions</th>
-                    </tr>
-                </thead>
-                <tbody class="text-gray-700">
-                    {% for unit, unit_income in rental_units_with_income %}
-                    <tr>
-                        <td class="border px-4 py-2">{{ unit.unit_identity }}</td>
-                        <td class="border px-4 py-2">
-                            {% if unit.occupied %}
-                                <a href="{% url 'tenant_details' unit.rental_units.first.pk %}" class="text-red-500 font-semibold">{{ unit.rental_units.first.tenant_name }}</a>
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
-                        <td class="border px-4 py-2">{{ unit.current_monthly_rent_rate.rent_rate }}</td>
-                        <td class="border px-4 py-2">
-                            {% if unit.occupied %}
-                                <i class="fas fa-check-circle text-green-500"></i>
-                            {% else %}
-                                <i class="fas fa-times-circle text-red-500"></i>
-                            {% endif %}
-                        </td>
-                        <td class="border px-4 py-2">{{ unit_income|default:"-" }}</td>
-                        <td class="border px-4 py-2 flex gap-2 justify-center">
-                            {% if is_landlord %}
-                                <a href="{% url 'update_rent_rate' unit.current_monthly_rent_rate.pk %}" class="action-link text-white bg-blue-500 px-2 py-1 rounded-md hover:bg-blue-600 transition duration-300" title="Update Rent Rate">
-                                    <i class="fas fa-edit"></i>
-                                </a>
-                                <a href="{% url 'create_rent_rate' unit.pk %}" class="action-link text-white bg-green-500 px-2 py-1 rounded-md hover:bg-green-600 transition duration-300" title="Create New Rent Rate">
-                                    <i class="fas fa-plus"></i>
-                                </a>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </main>
-
-    <!-- JavaScript (if needed) -->
-    <script>
-        // JavaScript code here
-    </script>
-</body>
-</html>
+<div class="card table-card">
+    <table>
+        <thead>
+            <tr>
+                <th>Unit</th>
+                <th>Tenant</th>
+                <th class="numeric">Rent (Ksh)</th>
+                <th class="numeric">Paid for {{ month|date:"M Y" }}</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for unit, income in units %}
+            <tr>
+                <td><a href="{% url 'propertymanagement:unit_detail' unit.pk %}">{{ unit.unit_identity }}</a></td>
+                <td>
+                    {% with tenant=unit.current_tenant %}
+                    {% if tenant %}<a href="{% url 'propertymanagement:tenant_detail' tenant.pk %}">{{ tenant.tenant_name }}</a>{% else %}<span class="tag">Vacant</span>{% endif %}
+                    {% endwith %}
+                </td>
+                <td class="numeric">{{ unit.current_rent_rate.rent_rate|default:"–" }}</td>
+                <td class="numeric">{{ income }}</td>
+                <td class="inline-actions"><a href="{% url 'rent_rates' unit.pk %}">Rent history</a></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" class="empty">No units yet. <a href="{% url 'unit_create' rental_property.pk %}">Add one</a>.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

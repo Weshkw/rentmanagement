@@ -1,0 +1,6 @@
+{% comment %}Chooses the month a report covers. Expects: month (a date).{% endcomment %}
+<form method="get" class="month-picker">
+    <label for="month">Month</label>
+    <input type="month" id="month" name="month" value="{{ month|date:'Y-m' }}">
+    <button type="submit" class="button">Show</button>
+</form>

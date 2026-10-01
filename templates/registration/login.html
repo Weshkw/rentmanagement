@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}Log in{% endblock %}
+
+{% block content %}
+<section class="card form-card">
+    <h1>Log in</h1>
+    {% if form.non_field_errors %}
+    <p class="form-error">That phone number and password did not match. Try again.</p>
+    {% endif %}
+    <form method="post" action="{% url 'login' %}" class="stacked-form">
+        {% csrf_token %}
+        <label for="{{ form.username.id_for_label }}">Phone number</label>
+        {{ form.username }}
+        <label for="{{ form.password.id_for_label }}">Password</label>
+        {{ form.password }}
+        <input type="hidden" name="next" value="{{ next }}">
+        <button type="submit" class="button button-primary button-block">Log in</button>
+    </form>
+    <p class="form-footnote">New landlord? <a href="{% url 'register_landlord' %}">Create an account</a>.</p>
+</section>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}{{ unit.unit_identity }}{% endblock %}
+
+{% block content %}
+<h1>{{ unit }}</h1>
+
+<div class="split-layout">
+    <section class="card">
+        <dl class="details">
+            <div><dt>Current rent</dt><dd>{% with rate=unit.current_rent_rate %}{% if rate %}Ksh {{ rate.rent_rate }}/month{% else %}Not set{% endif %}{% endwith %}</dd></div>
+            <div><dt>Tenant</dt><dd>{% with tenant=unit.current_tenant %}{% if tenant %}<a href="{% url 'propertymanagement:tenant_detail' tenant.pk %}">{{ tenant.tenant_name }}</a>{% else %}Vacant · <a href="{% url 'propertymanagement:tenant_create' unit.pk %}">Add tenant</a>{% endif %}{% endwith %}</dd></div>
+        </dl>
+
+        <h2>Tenancy history</h2>
+        <ul class="plain-list">
+            {% for tenant in unit.tenants.all %}
+            <li><a href="{% url 'propertymanagement:tenant_detail' tenant.pk %}">{{ tenant.tenant_name }}</a>
+                <span class="muted">{{ tenant.date_tenancy_starts }} – {{ tenant.date_tenancy_ends|default:"present" }}</span></li>
+            {% empty %}
+            <li class="muted">Nobody has rented this unit yet.</li>
+            {% endfor %}
+        </ul>
+    </section>
+
+    <section class="card">
+        <h2>Notes</h2>
+        <form method="post" class="stacked-form">
+            {% csrf_token %}
+            {{ form.as_div }}
+            <button type="submit" class="button button-primary">Save notes</button>
+        </form>
+    </section>
+</div>
+{% endblock %}

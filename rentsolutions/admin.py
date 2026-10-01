@@ -1,75 +1,112 @@
 from django.contrib import admin
-import calendar
-from django.db.models import Sum, Q
-from django.utils.html import format_html
-from .models import CustomUser, Landlord, RentalProperty, RentalUnit, Tenant, RentalUnitMonthlyRentRate, RentPayment, RentalPropertyManager
+from django.contrib.auth.admin import UserAdmin
+from django.contrib.auth.forms import BaseUserCreationForm, UserChangeForm
 
-class CustomUserAdmin(admin.ModelAdmin):
-    list_display = ['full_name', 'phone_number', 'address', 'date_registered', 'date_updated']
-    search_fields = ['full_name', 'phone_number', 'address']
+from .models import (
+    CustomUser,
+    Landlord,
+    RentalProperty,
+    RentalPropertyManager,
+    RentalUnit,
+    RentalUnitMonthlyRentRate,
+    RentPayment,
+    Tenant,
+)
 
-admin.site.register(CustomUser, CustomUserAdmin)
 
+class CustomUserCreationForm(BaseUserCreationForm):
+    class Meta:
+        model = CustomUser
+        fields = ["phone_number", "full_name"]
+
+
+class CustomUserChangeForm(UserChangeForm):
+    class Meta(UserChangeForm.Meta):
+        model = CustomUser
+
+
+@admin.register(CustomUser)
+class CustomUserAdmin(UserAdmin):
+    form = CustomUserChangeForm
+    add_form = CustomUserCreationForm
+    list_display = ["full_name", "phone_number", "is_staff", "date_registered"]
+    list_filter = ["is_staff", "is_superuser", "is_active"]
+    search_fields = ["full_name", "phone_number"]
+    ordering = ["full_name"]
+    fieldsets = [
+        (None, {"fields": ["phone_number", "password"]}),
+        ("Personal info", {"fields": ["full_name", "address"]}),
+        (
+            "Permissions",
+            {"fields": ["is_active", "is_staff", "is_superuser", "groups", "user_permissions"]},
+        ),
+    ]
+    add_fieldsets = [
+        (
+            None,
+            {
+                "classes": ["wide"],
+                "fields": ["phone_number", "full_name", "password1", "password2"],
+            },
+        ),
+    ]
+
+
+@admin.register(Landlord)
 class LandlordAdmin(admin.ModelAdmin):
-    list_display = ['id', 'user_phone_number', 'user_full_name']
+    list_display = ["user"]
+    list_select_related = ["user"]
+    search_fields = ["user__full_name", "user__phone_number"]
 
-    def user_phone_number(self, obj):
-        return obj.user.phone_number
 
-    def user_full_name(self, obj):
-        return obj.user.full_name
+@admin.register(RentalProperty)
+class RentalPropertyAdmin(admin.ModelAdmin):
+    list_display = ["name", "landlord", "location", "date_registered"]
+    list_select_related = ["landlord__user"]
+    search_fields = ["name", "location"]
 
-    search_fields = ['user__full_name', 'user__phone_number']
-
-admin.site.register(Landlord, LandlordAdmin)
 
 @admin.register(RentalPropertyManager)
 class RentalPropertyManagerAdmin(admin.ModelAdmin):
-    list_display = ('user', 'property_managed', 'management_start_date', 'management_end_date')
-    search_fields = ('user__full_name', 'property_managed__name')
-    list_filter = ('management_start_date', 'management_end_date')
+    list_display = ["user", "property_managed", "management_start_date", "management_end_date"]
+    list_select_related = ["user", "property_managed"]
+    search_fields = ["user__full_name", "property_managed__name"]
 
-class RentalPropertyAdmin(admin.ModelAdmin):
-    list_display = ['name', 'landlord', 'location', 'total_units', 'date_registered', 'date_updated']
-    search_fields = ['name', 'location']
 
-admin.site.register(RentalProperty, RentalPropertyAdmin)
+class RentRateInline(admin.TabularInline):
+    model = RentalUnitMonthlyRentRate
+    extra = 0
 
+
+@admin.register(RentalUnit)
 class RentalUnitAdmin(admin.ModelAdmin):
-    list_display = ['id', 'property_with_rental_unit', 'unit_identity', 'current_monthly_rent_rate', 'occupied', 'unit_notes']
-    search_fields = ['unit_identity', 'property_with_rental_unit__name']
-    fields = ['property_with_rental_unit', 'unit_identity', 'current_monthly_rent_rate', 'occupied', 'unit_notes']
+    list_display = ["unit_identity", "property_with_rental_unit"]
+    list_select_related = ["property_with_rental_unit"]
+    search_fields = ["unit_identity", "property_with_rental_unit__name"]
+    inlines = [RentRateInline]
 
-admin.site.register(RentalUnit, RentalUnitAdmin)
 
+@admin.register(Tenant)
 class TenantAdmin(admin.ModelAdmin):
     list_display = [
-        'tenant_name', 'rental_unit_occupied', 'date_tenancy_starts', 'date_tenancy_ends', 'national_id_number', 'phone', 'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship', 'display_rental_balances',
+        "tenant_name",
+        "rental_unit_occupied",
+        "date_tenancy_starts",
+        "date_tenancy_ends",
     ]
+    list_select_related = ["rental_unit_occupied__property_with_rental_unit"]
+    search_fields = ["tenant_name", "phone", "national_id_number"]
 
-    def display_rental_balances(self, obj):
-        balances = obj.Tenant_Monthly_Rental_balances
-        if balances:
-            balance_strings = [f"{month}: {balance}" for month, balance in balances.items()]
-            return "\n".join(balance_strings)
-        else:
-            return "No rental balances found"
 
-    display_rental_balances.short_description = 'Monthly Rental Balances'
-
-admin.site.register(Tenant, TenantAdmin)
-
-class RentalUnitMonthlyRentRateAdmin(admin.ModelAdmin):
-    list_display = ('rent_rate', 'start_date', 'end_date', 'rental_unit', 'unit_absolute_identity')
-    search_fields = ('rental_unit', 'unit_absolute_identity')
-
-admin.site.register(RentalUnitMonthlyRentRate, RentalUnitMonthlyRentRateAdmin)
-
+@admin.register(RentPayment)
 class RentPaymentAdmin(admin.ModelAdmin):
-    list_display = ['tenant_name', 'rental_unit_paid_for', 'amount_paid', 'date_paid', 'intended_payment_month', 'intended_payment_year', 'date_recorded']
-    search_fields = ['tenant_paying__tenant_name']
-
-    def tenant_name(self, obj):
-        return obj.tenant_paying.tenant_name if obj.tenant_paying else ''
-
-admin.site.register(RentPayment, RentPaymentAdmin)
+    list_display = [
+        "tenant_paying",
+        "amount_paid",
+        "date_paid",
+        "intended_payment_month",
+        "intended_payment_year",
+    ]
+    list_select_related = ["tenant_paying__rental_unit_occupied"]
+    list_filter = ["intended_payment_year", "intended_payment_month"]
+    search_fields = ["tenant_paying__tenant_name"]

@@ -1,0 +1,47 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ title|default:"Rent Management" }}{% endblock %} · RentEasy</title>
+    <link rel="stylesheet" href="{% static 'css/app.css' %}">
+</head>
+<body>
+    <header class="site-header">
+        <div class="site-header-inner">
+            <a class="brand" href="{% url 'home' %}">RentEasy</a>
+            <nav class="site-nav">
+                {% if is_landlord %}
+                <a href="{% url 'landlord_dashboard' %}">Overview</a>
+                <a href="{% url 'property_list' %}">Properties</a>
+                <a href="{% url 'managers' %}">Managers</a>
+                {% endif %}
+                {% if is_landlord or is_manager %}
+                <a href="{% url 'propertymanagement:management_home' %}">Rent collection</a>
+                {% endif %}
+                {% if user.is_authenticated %}
+                <form method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="link-button">Log out</button>
+                </form>
+                {% else %}
+                <a href="{% url 'login' %}">Log in</a>
+                <a class="button button-light" href="{% url 'register_landlord' %}">Register</a>
+                {% endif %}
+            </nav>
+        </div>
+    </header>
+
+    <main class="page">
+        {% if messages %}
+        <ul class="messages">
+            {% for message in messages %}
+            <li class="message message-{{ message.tags }}">{{ message }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

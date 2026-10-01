@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Properties{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+    <h1>Properties</h1>
+    <a class="button button-primary" href="{% url 'property_create' %}">Add property</a>
+</div>
+
+<section class="card-grid">
+    {% for rental_property in properties %}
+    <article class="card">
+        <div class="card-heading">
+            <h2><a href="{% url 'property_units' rental_property.pk %}">{{ rental_property.name }}</a></h2>
+            <div class="inline-actions">
+                <a href="{% url 'property_edit' rental_property.pk %}">Edit</a>
+                <a class="danger" href="{% url 'property_delete' rental_property.pk %}">Delete</a>
+            </div>
+        </div>
+        <p class="muted">{{ rental_property.location }}</p>
+        {% if rental_property.amenities %}<p>{{ rental_property.amenities }}</p>{% endif %}
+
+        <h3>Units</h3>
+        <ul class="unit-list">
+            {% for unit in rental_property.units.all %}
+            <li>
+                <span><strong>{{ unit.unit_identity }}</strong>
+                    {% with rate=unit.current_rent_rate %}
+                    · {% if rate %}Ksh {{ rate.rent_rate }}/month{% else %}no rent set{% endif %}
+                    {% endwith %}
+                </span>
+                <span class="inline-actions">
+                    <a href="{% url 'rent_rates' unit.pk %}">Rent</a>
+                    <a href="{% url 'unit_edit' unit.pk %}">Rename</a>
+                    <a class="danger" href="{% url 'unit_delete' unit.pk %}">Delete</a>
+                </span>
+            </li>
+            {% empty %}
+            <li class="muted">No units yet.</li>
+            {% endfor %}
+        </ul>
+        <a class="button" href="{% url 'unit_create' rental_property.pk %}">Add unit</a>
+    </article>
+    {% empty %}
+    <p class="empty">You have no properties yet.</p>
+    {% endfor %}
+</section>
+{% endblock %}

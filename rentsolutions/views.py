@@ -1,550 +1,275 @@
-from django.shortcuts import render, redirect,get_object_or_404
-from django.contrib.auth import authenticate, login, logout 
-from django.core.exceptions import ValidationError
 from django.contrib import messages
-from django.db.models import Sum
+from django.contrib.auth import login
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
-from django.db import transaction
-from django.contrib.auth import login as auth_login
-from django.shortcuts import redirect, resolve_url
-from django.urls import reverse
-from datetime import timedelta
-from django.http import JsonResponse
-from datetime import datetime
-from django.contrib.auth.decorators import login_required,user_passes_test
-from .models import CustomUser, Landlord, RentalProperty, RentalUnit, Tenant, RentalUnitMonthlyRentRate, RentPayment,RentalPropertyManager
+from django.views.decorators.http import require_POST
+
+from .access import (
+    is_landlord,
+    is_manager,
+    landlord_required,
+    owned_properties,
+)
+from .forms import (
+    HireManagerForm,
+    LandlordRegistrationForm,
+    NewRentalUnitForm,
+    RentalPropertyForm,
+    RentalUnitForm,
+    RentRateForm,
+)
+from .models import RentalPropertyManager, RentalUnit
+from .reports import property_month, selected_month, unit_income, with_units_and_tenancies
 
 
-
-def is_landlord(user):
-    """
-    Check if the user is a landlord.
-    """
-    return Landlord.objects.filter(user=user).exists()
-
-def is_rental_property_manager(user):
-    """
-    Check if the user is a rental property manager.
-    """
-    return RentalPropertyManager.objects.filter(user=user).exists()
-
-# Decorator to require login and check if the user is a landlord
-
-def home(request):
-  
-    return render(request, 'rentsolutions/home.html')
-
-def login_view(request):
-    if request.method == 'POST':
-        phone_number = request.POST['phone_number']
-        password = request.POST['password']
-        user = authenticate(request, phone_number=phone_number, password=password)
-        if user is not None:
-            login(request, user)
-            if is_landlord(user):
-                return redirect('land_lord_main_page')
-            elif user.is_superuser:
-                return redirect('admin:index')
-            elif user.is_staff:
-                return redirect('rent_easier')
-            elif is_rental_property_manager(user):
-                return redirect('propertymanagement:management_home')
-            else:
-                return redirect('home')
-        else:
-            message = "Invalid credentials"
-            return render(request, 'rentsolutions/login.html', {'message': message})
-    return render(request, 'rentsolutions/login.html')
-
-
-
-def logout_view(request):
-    logout(request)
-    return redirect('home')
-
-
-def register_as_landlord(request):
-    if request.method == 'POST':
-        with transaction.atomic():
-            phone_number = request.POST.get('phone_number')
-            password = request.POST.get('password')
-            full_name = request.POST.get('full_name')
-            address = request.POST.get('address')
-            property_name = request.POST.get('property_name')
-            location = request.POST.get('location')
-            total_units = request.POST.get('total_units')
-            amenities = request.POST.get('amenities')
-
-            # Create the user
-            user = CustomUser.objects.create(
-                username=phone_number,
-                phone_number=phone_number,
-                full_name=full_name,
-                address=address,
-                password=password
-            )
-
-            # Create the landlord
-            landlord = Landlord.objects.create(user=user)
-
-            # Create the rental property
-            rental_property = RentalProperty.objects.create(
-                name=property_name,
-                landlord=landlord,
-                location=location,
-                total_units=total_units,
-                amenities=amenities
-            )
-
-            # Automatically log in the user
-            login(request, user)
-
-            return redirect('landlord_properties')
-    return render(request, 'rentsolutions/register_landlord.html')
-
-
-
-
-
-@login_required(login_url='login')
-@user_passes_test(is_landlord)
-def land_lord_main_page(request):
-    landlord = Landlord.objects.get(user=request.user)
-    properties = landlord.properties.all()
-
-    current_month = datetime.now().month
-    current_year = datetime.now().year
-    selected_month = request.GET.get('month', current_month)
-    selected_year = request.GET.get('year', current_year)
-
-    property_data = []
-    for property in properties:
-        units = property.rentalunit_set.all()
-        occupied_units = units.filter(occupied=True).count()
-        total_units = units.count()
-
-        intended_payments = RentPayment.objects.filter(
-            rental_unit_paid_for__in=[unit.unit_identity for unit in units],
-            intended_payment_month=str(selected_month).zfill(2),
-            intended_payment_year=str(selected_year)
-        ).aggregate(total_amount=Sum('amount_paid'))['total_amount'] or 0
-
-        actual_payments = RentPayment.objects.filter(
-            rental_unit_paid_for__in=[unit.unit_identity for unit in units],
-            date_paid__month=int(selected_month),
-            date_paid__year=int(selected_year)
-        ).aggregate(total_amount=Sum('amount_paid'))['total_amount'] or 0
-
-        tenants = Tenant.objects.filter(rental_unit_occupied__in=units)
-        total_balance = sum(tenant.Tenant_Monthly_Rental_balances.get(f"{selected_year}-{str(selected_month).zfill(2)}", 0) for tenant in tenants)
-
-        
-
-        property_data.append({
-            'property': property,
-            'occupied_units': occupied_units,
-            'total_units': total_units,
-            'intended_payments': intended_payments,
-            'actual_payments': actual_payments,
-            'total_balance': total_balance
-        })
-
-    sorted_property_data = sorted(property_data, key=lambda x: x['intended_payments'], reverse=True)
-
+def render_form(request, form, *, title, submit_label, cancel_url, intro="", warning=""):
     context = {
-        'is_landlord': True,
-        'property_data': sorted_property_data,
-        'selected_month': selected_month,
-        'selected_year': selected_year
+        "form": form,
+        "title": title,
+        "submit_label": submit_label,
+        "cancel_url": cancel_url,
+        "intro": intro,
+        "warning": warning,
     }
-    return render(request, 'rentsolutions/landlordmainpage.html', context)
+    return render(request, "form_page.html", context)
 
 
-
-@login_required(login_url='login')
-@user_passes_test(is_landlord)
-def employ_property_manager(request):
-    landlord = Landlord.objects.get(user=request.user)
-    properties = landlord.properties.all()
-
-    if request.method == 'POST':
-        # Get the form data from the request
-        full_name = request.POST.get('full_name')
-        phone_number = request.POST.get('phone_number')
-        national_id_number = request.POST.get('national_id_number')
-        management_start_date = request.POST.get('management_start_date')
-        property_id = request.POST.get('property_id')  # Assuming property ID is submitted
-
-        # Check if the user with the given phone number already exists
-        existing_user = CustomUser.objects.filter(phone_number=phone_number).first()
-
-        if existing_user:
-            # If the user exists, create a manager entry without modifying the user
-            manager = RentalPropertyManager.objects.create(
-                user=existing_user,
-                property_managed_id=property_id,
-                national_id_number=national_id_number,
-                management_start_date=management_start_date
-            )
-            messages.success(request, f"{existing_user.full_name} has been assigned as the manager for this property.")
-        else:
-            # If the user doesn't exist, create a new user and a manager entry
-            with transaction.atomic():
-                user = CustomUser.objects.create_user(
-                    username=phone_number,
-                    phone_number=phone_number,
-                    full_name=full_name,
-                    password=national_id_number  # Use the national_id_number as the initial password
-                )
-
-                manager = RentalPropertyManager.objects.create(
-                    user=user,
-                    property_managed_id=property_id,
-                    national_id_number=national_id_number,
-                    management_start_date=management_start_date
-                )
-                messages.success(request, f"User {user.full_name} has been created and assigned as the manager for this property.")
-
-        return redirect('manage_property_managers')
-
+def render_confirm(request, *, title, message, confirm_label, cancel_url):
     context = {
-        'properties': properties,
-        'is_landlord': True,
+        "title": title,
+        "message": message,
+        "confirm_label": confirm_label,
+        "cancel_url": cancel_url,
     }
-    return render(request, 'rentsolutions/manage_property_managers.html', context)
-
-
-@login_required(login_url='login')
-@user_passes_test(is_landlord)
-def fire_property_manager(request, manager_id):
-    property_manager = get_object_or_404(RentalPropertyManager, pk=manager_id)
-    property_managed = property_manager.property_managed
-
-    if request.method == 'POST':
-        # Set the management_end_date to the current date and time
-        property_manager.management_end_date = timezone.now().date()
-        property_manager.delete()
-
-        messages.success(request, f"{property_manager.user.full_name} has been fired as the manager for {property_managed.name}.")
-        return redirect('manage_property_managers')
-
-    # No need to render a template for GET requests
-    return redirect('manage_property_managers')
-
-
-@login_required(login_url='login')
-@user_passes_test(is_landlord or is_rental_property_manager)
-def rental_units_in_property(request, pk):
-    property = get_object_or_404(RentalProperty, pk=pk)
-    rental_units = property.rentalunit_set.all()
-
-    # Get the selected month and year from the query parameters
-    selected_month = request.GET.get('month')
-    selected_year = request.GET.get('year')
-
-    # Provide default values if the query parameters are not present
-    if not selected_month:
-        selected_month = datetime.now().month
-    if not selected_year:
-        selected_year = datetime.now().year
-
-    # Calculate the rental income for each unit
-    rental_income = RentPayment.objects.filter(
-        rental_unit_paid_for__in=[unit.unit_identity for unit in rental_units],
-        intended_payment_month=str(selected_month).zfill(2),
-        intended_payment_year=str(selected_year)
-    ).values('rental_unit_paid_for').annotate(total_amount=Sum('amount_paid'))
-
-    # Map the rental income to each unit
-    rental_units_with_income = []
-    for unit in rental_units:
-        income_data = next((item for item in rental_income if item['rental_unit_paid_for'] == unit.unit_identity), None)
-        unit_income = income_data['total_amount'] if income_data else 0
-        rental_units_with_income.append((unit, unit_income))
-
-    context = {
-        'is_landlord': True,
-        'property': property,
-        'rental_units_with_income': rental_units_with_income,
-        'selected_month': selected_month,
-        'selected_year': selected_year
-    }
-    return render(request, 'rentsolutions/property_units.html', context)
-
-
-
-@login_required
-@user_passes_test(is_landlord)
-def create_rent_rate(request, pk):
-    rental_unit = get_object_or_404(RentalUnit, pk=pk)
-    existing_rent_rates = RentalUnitMonthlyRentRate.objects.filter(unit_absolute_identity=rental_unit.id).order_by('start_date')
-
-    if request.method == 'POST':
-        rent_rate = request.POST.get('rent_rate')
-        start_date = datetime.strptime(request.POST.get('start_date'), '%Y-%m-%d').date()
-        end_date = request.POST.get('end_date')
-        end_date = datetime.strptime(end_date, '%Y-%m-%d').date() if end_date else None
-
-        try:
-            RentalUnitMonthlyRentRate.objects.create(
-                rent_rate=rent_rate,
-                start_date=start_date,
-                end_date=end_date,
-                rental_unit=rental_unit.unit_identity,
-                unit_absolute_identity=rental_unit.id
-            )
-            return redirect('create_rent_rate', pk=rental_unit.pk)
-        except ValidationError as e:
-            error_message = str(e)
-
-            context = {
-                'error_message': error_message,
-                'is_landlord': True,
-                'rental_unit': rental_unit,
-                'existing_rent_rates': existing_rent_rates
-            }
-            return render(request, 'rentsolutions/rent_rate_management.html', context)
-
-    context = {
-        'is_landlord': True,
-        'rental_unit': rental_unit,
-        'existing_rent_rates': existing_rent_rates
-    }
-    return render(request, 'rentsolutions/rent_rate_management.html', context)
-
-@login_required
-@user_passes_test(is_landlord)
-def update_rent_rate(request, pk):
-    rent_rate = get_object_or_404(RentalUnitMonthlyRentRate, pk=pk)
-    rental_unit = RentalUnit.objects.get(id=rent_rate.unit_absolute_identity)
-    existing_rent_rates = RentalUnitMonthlyRentRate.objects.filter(unit_absolute_identity=rental_unit.id).order_by('start_date')
-
-    if request.method == 'POST':
-        new_rent_rate = request.POST.get('rent_rate')
-        new_start_date = datetime.strptime(request.POST.get('start_date'), '%Y-%m-%d').date()
-        new_end_date = request.POST.get('end_date')
-        new_end_date = datetime.strptime(new_end_date, '%Y-%m-%d').date() if new_end_date else None
-
-        try:
-            rent_rate.rent_rate = new_rent_rate
-            rent_rate.start_date = new_start_date
-            rent_rate.end_date = new_end_date
-            rent_rate.save()
-            return redirect('update_rent_rate', pk=rent_rate.pk)
-        except ValidationError as e:
-            error_message = str(e)
-            context = {
-                'is_landlord': True,
-                'rental_unit': rental_unit,
-                'rent_rate': rent_rate,
-                'existing_rent_rates': existing_rent_rates,
-                'error_message': error_message
-            }
-            return render(request, 'rentsolutions/rent_rate_management.html', context)
-
-    context = {
-        'is_landlord': True,
-        'rental_unit': rental_unit,
-        'rent_rate': rent_rate,
-        'existing_rent_rates': existing_rent_rates
-    }
-    return render(request, 'rentsolutions/rent_rate_management.html', context)
-
-
-@login_required(login_url='login')
-@user_passes_test(is_landlord)
-def landlord_properties(request):
-    landlord = Landlord.objects.get(user=request.user)
-    properties = landlord.properties.all().prefetch_related('rentalunit_set')
-    context = {
-        'properties': properties,
-        'is_landlord': True,
-    }
-    return render(request, 'rentsolutions/landlord_properties.html', context)
-
-
-
-@login_required(login_url='login')
-@user_passes_test(is_landlord)
-def tenant_details(request, pk):
-    tenant = get_object_or_404(Tenant, pk=pk)
-    context = {
-        'tenant': tenant,
-        'is_landlord': True,
-        
-    }
-    return render(request, 'rentsolutions/tenant_details.html', context) 
-
-
-@login_required(login_url='login')
-@user_passes_test(is_landlord or is_rental_property_manager)
-def add_rental_property(request):
-    if request.method == 'POST':
-        name = request.POST.get('name')
-        location = request.POST.get('location')
-        amenities = request.POST.get('amenities')
-
-        # Get the Landlord instance associated with the current user
-        landlord = Landlord.objects.get(user=request.user)
-
-        property = RentalProperty(
-            name=name,
-            location=location,
-            amenities=amenities,
-            landlord=landlord  # Use the Landlord instance
-        )
-        property.save()
-        return redirect('landlord_properties')
-    context ={
-        'is_landlord': True,
-        'is_rental_property_manager': True,
-    }
-    return render(request, 'rentsolutions/add_rental_property.html', context)
-
-@login_required(login_url='login')
-@user_passes_test(is_landlord or is_rental_property_manager)
-def update_property(request, pk):
-    property = get_object_or_404(RentalProperty, pk=pk)
-
-    if request.method == 'POST':
-        name = request.POST.get('name')
-        location = request.POST.get('location')
-        amenities = request.POST.get('amenities')
-
-        property.name = name
-        property.location = location
-        property.amenities = amenities
-        property.save()
-
-        return redirect('landlord_properties')
-
-    context = {
-        'property': property,
-        'is_landlord': True,
-        'is_rental_property_manager': True,
-    }
-    return render(request, 'rentsolutions/update_property.html', context)
-
-
-
-@login_required(login_url='login')
-@user_passes_test(is_landlord or is_rental_property_manager)
-def delete_property(request, pk):
-    property = get_object_or_404(RentalProperty, pk=pk)
-
-    if request.method == 'POST':
-        property.delete()
-        return redirect('landlord_properties')
-
-    context = {
-        'property': property,
-        'is_landlord': True,
-        'is_rental_property_manager': True,
-    }
-    return render(request, 'rentsolutions/delete_property.html', context)
-
-
-
-@login_required(login_url='login')
-@user_passes_test(is_landlord or is_rental_property_manager)
-def add_rental_unit(request, pk):
-    property = get_object_or_404(RentalProperty, pk=pk)
-
-    if request.method == 'POST':
-        unit_identity = request.POST.get('unit_identity')
-        rent_rate = request.POST.get('rent_rate')
-        start_date_str = request.POST.get('start_date')
-        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
-
-        # Create a new RentalUnitMonthlyRentRate instance
-        rent_rate_instance = RentalUnitMonthlyRentRate.objects.create(
-            rent_rate=rent_rate,
-            start_date=start_date,
-        )
-
-        # Create a new RentalUnit instance
-        unit = RentalUnit(
-            property_with_rental_unit=property,
-            unit_identity=unit_identity,
-            current_monthly_rent_rate=rent_rate_instance
-        )
-        unit.save()
-
-        return redirect('landlord_properties')
-
-    context = {
-        'property': property,
-        'is_landlord': True,
-        'is_rental_property_manager': True,
-    }
-    return render(request, 'rentsolutions/add_rental_unit.html', context)
-
-
-@login_required
-@user_passes_test(is_landlord or is_rental_property_manager)
-def update_rental_unit(request, pk):
-    unit = get_object_or_404(RentalUnit, pk=pk)
-
-    if request.method == 'POST':
-        unit_identity = request.POST.get('unit_identity')
-        rent_rate = request.POST.get('rent_rate')
-        start_date_str = request.POST.get('start_date')  # Get the start_date as a string
-        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()  # Convert the string to a date object
-
-        unit.unit_identity = unit_identity
-        unit.current_monthly_rent_rate.rent_rate = rent_rate
-        unit.current_monthly_rent_rate.start_date = start_date
-        unit.current_monthly_rent_rate.save()
-        unit.save()
-
-        return redirect('landlord_properties')
-
-    context = {
-        'unit': unit,
-        'is_landlord': is_landlord(request.user),
-        'is_rental_property_manager': is_rental_property_manager(request.user),
-    }
-    return render(request, 'rentsolutions/update_rental_unit.html', context)
-
-
-
-@login_required
-@user_passes_test(is_landlord or is_rental_property_manager)
-def delete_rental_unit(request, pk):
-    rental_unit = get_object_or_404(RentalUnit, pk=pk)
-
-    if request.method == 'POST':
-        rental_unit.delete()
-        return redirect('landlord_properties')
-
-    context = {
-        'is_landlord': is_landlord(request.user),
-        'is_rental_property_manager': is_rental_property_manager(request.user),
-    }
-    return redirect('landlord_properties')
-
-
-
-
-
-
-
-
-
-
-@login_required(login_url='login')
-@user_passes_test(lambda u: u.is_staff or u.is_superuser)
-def administration(request):
-    context = {}
-    return render(request, 'rentsolutions/admin_staff.html', context)
-
-
-
-
-
-
+    return render(request, "confirm.html", context)
 
 
 def home(request):
-  
-    return render(request, 'rentsolutions/home.html')
+    if request.user.is_authenticated:
+        return redirect("dashboard")
+    return render(request, "rentsolutions/home.html")
+
+
+def register_landlord(request):
+    form = LandlordRegistrationForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        login(request, form.save())
+        messages.success(request, "Welcome! Add the units in your property to get started.")
+        return redirect("property_list")
+    return render_form(
+        request,
+        form,
+        title="Register as a landlord",
+        submit_label="Create account",
+        cancel_url="home",
+        intro="Create your account and your first property.",
+    )
+
+
+@login_required
+def dashboard(request):
+    """Send each user to the page for their role."""
+    if is_landlord(request.user):
+        return redirect("landlord_dashboard")
+    if is_manager(request.user):
+        return redirect("propertymanagement:management_home")
+    if request.user.is_staff:
+        return redirect("admin:index")
+    return render(request, "rentsolutions/no_role.html")
+
+
+@landlord_required
+def landlord_dashboard(request):
+    month = selected_month(request)
+    properties = with_units_and_tenancies(owned_properties(request.user))
+    summaries = sorted(
+        (property_month(rental_property, month) for rental_property in properties),
+        key=lambda summary: summary.paid_for_month,
+        reverse=True,
+    )
+    return render(
+        request, "rentsolutions/landlord_dashboard.html", {"summaries": summaries, "month": month}
+    )
+
+
+@landlord_required
+def property_list(request):
+    properties = owned_properties(request.user).prefetch_related("units__rent_rates")
+    return render(request, "rentsolutions/property_list.html", {"properties": properties})
+
+
+@landlord_required
+def property_create(request):
+    form = RentalPropertyForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        form.instance.landlord = request.user.landlord
+        form.save()
+        messages.success(request, f"{form.instance.name} was added.")
+        return redirect("property_list")
+    return render_form(
+        request,
+        form,
+        title="Add a property",
+        submit_label="Add property",
+        cancel_url="property_list",
+    )
+
+
+@landlord_required
+def property_edit(request, pk):
+    rental_property = get_object_or_404(owned_properties(request.user), pk=pk)
+    form = RentalPropertyForm(request.POST or None, instance=rental_property)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, f"{rental_property.name} was updated.")
+        return redirect("property_list")
+    return render_form(
+        request,
+        form,
+        title=f"Edit {rental_property.name}",
+        submit_label="Save changes",
+        cancel_url="property_list",
+    )
+
+
+@landlord_required
+def property_delete(request, pk):
+    rental_property = get_object_or_404(owned_properties(request.user), pk=pk)
+    if request.method == "POST":
+        rental_property.delete()
+        messages.success(request, f"{rental_property.name} was deleted.")
+        return redirect("property_list")
+    return render_confirm(
+        request,
+        title=f"Delete {rental_property.name}?",
+        message="This permanently deletes the property with all its units, tenants and payments.",
+        confirm_label="Delete property",
+        cancel_url="property_list",
+    )
+
+
+@landlord_required
+def property_units(request, pk):
+    month = selected_month(request)
+    rental_property = get_object_or_404(
+        with_units_and_tenancies(owned_properties(request.user)), pk=pk
+    )
+    units = [(unit, unit_income(unit, month)) for unit in rental_property.units.all()]
+    context = {"rental_property": rental_property, "units": units, "month": month}
+    return render(request, "rentsolutions/property_units.html", context)
+
+
+def owned_units(user):
+    return RentalUnit.objects.filter(property_with_rental_unit__in=owned_properties(user))
+
+
+@landlord_required
+def unit_create(request, property_pk):
+    rental_property = get_object_or_404(owned_properties(request.user), pk=property_pk)
+    form = NewRentalUnitForm(request.POST or None, rental_property=rental_property)
+    if request.method == "POST" and form.is_valid():
+        unit = form.save()
+        messages.success(request, f"Unit {unit.unit_identity} was added.")
+        return redirect("property_list")
+    return render_form(
+        request,
+        form,
+        title=f"Add a unit to {rental_property.name}",
+        submit_label="Add unit",
+        cancel_url="property_list",
+    )
+
+
+@landlord_required
+def unit_edit(request, pk):
+    unit = get_object_or_404(owned_units(request.user), pk=pk)
+    form = RentalUnitForm(
+        request.POST or None, instance=unit, rental_property=unit.property_with_rental_unit
+    )
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, f"Unit {unit.unit_identity} was renamed.")
+        return redirect("property_list")
+    return render_form(
+        request,
+        form,
+        title=f"Rename unit {unit.unit_identity}",
+        submit_label="Save",
+        cancel_url="property_list",
+        intro="To change the rent, add a new rent rate from the unit's rent page.",
+    )
+
+
+@landlord_required
+def unit_delete(request, pk):
+    unit = get_object_or_404(owned_units(request.user), pk=pk)
+    if request.method == "POST":
+        unit.delete()
+        messages.success(request, f"Unit {unit.unit_identity} was deleted.")
+        return redirect("property_list")
+    return render_confirm(
+        request,
+        title=f"Delete unit {unit.unit_identity}?",
+        message="This permanently deletes the unit with its rent history, tenants and payments.",
+        confirm_label="Delete unit",
+        cancel_url="property_list",
+    )
+
+
+@landlord_required
+def rent_rates(request, unit_pk, rate_pk=None):
+    """A unit's rent history, with a form to add a rate or edit the one selected."""
+    unit = get_object_or_404(owned_units(request.user), pk=unit_pk)
+    rate = get_object_or_404(unit.rent_rates, pk=rate_pk) if rate_pk else None
+    form = RentRateForm(request.POST or None, instance=rate, rental_unit=unit)
+    if request.method == "POST" and form.is_valid():
+        saved = form.save()
+        messages.success(
+            request, f"Rent of {saved.rent_rate} applies from {saved.start_date:%B %Y}."
+        )
+        return redirect("rent_rates", unit_pk=unit.pk)
+    context = {"unit": unit, "rate": rate, "form": form, "rates": unit.rent_rates.all()}
+    return render(request, "rentsolutions/rent_rates.html", context)
+
+
+@landlord_required
+def managers(request):
+    properties = owned_properties(request.user)
+    form = HireManagerForm(request.POST or None, landlord_properties=properties)
+    if request.method == "POST" and form.is_valid():
+        manager, temporary_password = form.save()
+        message = f"{manager.user.full_name} now manages {manager.property_managed.name}."
+        if temporary_password:
+            message += (
+                f" They can sign in with {manager.user.phone_number} and the temporary password"
+                f" {temporary_password} – share it with them privately."
+            )
+        messages.success(request, message)
+        return redirect("managers")
+    active_managers = (
+        RentalPropertyManager.objects.active()
+        .filter(property_managed__in=properties)
+        .select_related("user", "property_managed")
+    )
+    return render(
+        request, "rentsolutions/managers.html", {"form": form, "managers": active_managers}
+    )
+
+
+@landlord_required
+@require_POST
+def manager_end(request, pk):
+    manager = get_object_or_404(
+        RentalPropertyManager.objects.active().filter(
+            property_managed__in=owned_properties(request.user)
+        ),
+        pk=pk,
+    )
+    manager.management_end_date = timezone.localdate()
+    manager.save(update_fields=["management_end_date"])
+    messages.success(
+        request,
+        f"{manager.user.full_name} no longer manages {manager.property_managed.name}.",
+    )
+    return redirect("managers")

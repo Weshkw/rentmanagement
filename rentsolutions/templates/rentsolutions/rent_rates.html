@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Rent for {{ unit.unit_identity }}{% endblock %}
+
+{% block content %}
+<h1>Rent for {{ unit }}</h1>
+
+<div class="split-layout">
+    <section class="card">
+        <h2>{% if rate %}Edit the rate from {{ rate.start_date|date:"F Y" }}{% else %}Add a rent rate{% endif %}</h2>
+        <p class="callout">Change rent with care and follow the legal notice your tenancy agreements require.</p>
+        <form method="post" class="stacked-form">
+            {% csrf_token %}
+            {{ form.as_div }}
+            <div class="form-actions">
+                {% if rate %}<a class="button" href="{% url 'rent_rates' unit.pk %}">Cancel</a>{% endif %}
+                <button type="submit" class="button button-primary">Save rate</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="card table-card">
+        <table>
+            <thead>
+                <tr><th>From</th><th class="numeric">Monthly rent (Ksh)</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for existing in rates %}
+                <tr>
+                    <td>{{ existing.start_date|date:"F Y" }}</td>
+                    <td class="numeric">{{ existing.rent_rate }}</td>
+                    <td class="inline-actions"><a href="{% url 'rent_rate_edit' unit.pk existing.pk %}">Edit</a></td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="3" class="empty">No rent set yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+</div>
+{% endblock %}
