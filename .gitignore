@@ -1,3 +1,26 @@
-screenshot_images/
-debug.log
-static/screenshot_images/
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Django
+db.sqlite3
+db.sqlite3-journal
+/media/
+/staticfiles/
+
+# Local configuration
+.env
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
